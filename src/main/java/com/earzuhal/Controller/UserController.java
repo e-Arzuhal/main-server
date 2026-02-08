@@ -5,6 +5,7 @@ import com.earzuhal.Service.UserService;
 import com.earzuhal.dto.user.UserResponse;
 import com.earzuhal.dto.user.UserUpdateRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;

@@ -6,6 +6,7 @@ import com.earzuhal.dto.user.UserResponse;
 import com.earzuhal.dto.user.UserUpdateRequest;
 import com.earzuhal.exception.ResourceNotFoundException;
 import com.earzuhal.exception.UserAlreadyExistsException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
