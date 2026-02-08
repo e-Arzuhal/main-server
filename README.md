@@ -9,6 +9,13 @@ and approval flows.
 
 ---
 
+## TODO:
+- Security will be added via JWT or Spring Security in the future, so password will be hashed and salted, and role-based access control will be implemented. Also it will not be possible to operate on users without login.
+- Actions for interacting and implementing the main logic for combining the other submodules will be implemented in the Service package and called in the Controller package.
+
+
+---
+
 ## System Role
 
 The Main Server is responsible for:
@@ -82,13 +89,6 @@ src/main/java/com/earzuhal
 - Java 21
 - PostgreSQL running locally or remotely
 - Maven 3.9+
-
----
-
-## TODO:
-- Security will be added via JWT or Spring Security in the future, so password will be hashed and salted, and role-based access control will be implemented. Also it will not be possible to operate on users without login.
-- Actions for interacting and implementing the main logic for combining the other submodules will be implemented in the Service package and called in the Controller package.
-
 
 ---
 
