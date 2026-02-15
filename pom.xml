@@ -58,6 +58,12 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- WebClient for microservice communication -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webflux</artifactId>
+		</dependency>
+
 		<!-- Spring Security -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
