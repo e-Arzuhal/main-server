@@ -50,6 +50,7 @@ NFC reading, camera scanning, and TC identity card reading are handled on the cl
 Key dependencies used in this project:
 
 - spring-boot-starter-web (REST API - MVC)
+- spring-boot-starter-webflux (WebClient for microservice communication)
 - spring-boot-starter-security (Authentication and authorization)
 - spring-boot-starter-data-jpa (Persistence layer)
 - spring-boot-starter-validation (Request validation)
@@ -74,18 +75,33 @@ src/main/java/com/earzuhal/
 │   │   └── JwtAuthenticationEntryPoint.java
 │   └── CustomUserDetailsService.java
 ├── controller/                # REST API endpoints
-│   ├── AuthController.java   # /api/auth/register, /api/auth/login
-│   └── UserController.java   # /api/users/**
+│   ├── AuthController.java        # /api/auth/register, /api/auth/login
+│   ├── ContractController.java    # /api/contracts/**
+│   ├── UserController.java        # /api/users/**
+│   └── AnalysisController.java    # /api/analysis/** (NLP + GraphRAG orchestration)
 ├── service/                   # Business logic
-│   ├── AuthService.java      # Registration, login logic
-│   └── UserService.java      # User management
+│   ├── AuthService.java           # Registration, login logic
+│   ├── UserService.java           # User management
+│   ├── ContractService.java       # Contract CRUD & workflow
+│   ├── AnalysisService.java       # NLP + GraphRAG orchestration
+│   ├── NlpService.java            # NLP server HTTP client
+│   └── GraphRagService.java       # GraphRAG server HTTP client
 ├── repository/                # Data access layer
-│   └── UserRepository.java
+│   ├── UserRepository.java
+│   └── ContractRepository.java
 ├── Model/                     # JPA entities
-│   └── User.java
+│   ├── User.java
+│   └── Contract.java
 ├── dto/                       # Data Transfer Objects
 │   ├── auth/                  # Authentication DTOs
-│   └── user/                  # User DTOs
+│   ├── user/                  # User DTOs
+│   ├── contract/              # Contract DTOs
+│   └── analysis/              # NLP/GraphRAG integration DTOs
+│       ├── AnalyzeRequest.java
+│       ├── NlpResponse.java
+│       ├── GraphRagResponse.java
+│       ├── FullAnalysisResponse.java
+│       └── ContractTypeMapping.java
 ├── exception/                 # Exception handling
 │   ├── GlobalExceptionHandler.java
 │   └── Custom exceptions...
@@ -182,18 +198,48 @@ http://localhost:8080
 
 ## External Services Integration
 
-The main server communicates with other services via HTTP (REST).
+The main server communicates with other microservices via HTTP (REST) using Spring WebClient.
 
-Typical flow:
+### Service URLs (application.properties)
 
-1. Client sends request to Main Server
-2. Main Server calls NLP, GraphRAG, and Statistics services
-3. Results are merged
-4. Contract data is finalized
-5. PDF is generated
-6. Approval and digital signature flow begins
+```properties
+services.nlp.base-url=${NLP_SERVICE_URL:http://localhost:8001}
+services.graphrag.base-url=${GRAPHRAG_SERVICE_URL:http://localhost:8000}
+services.statistics.base-url=${STATISTICS_SERVICE_URL:http://localhost:8002}
+```
 
-All external service calls are done using Spring WebClient (non-blocking).
+### Implementation Status
+
+| Service | Status | Class | Endpoint Called |
+|---------|--------|-------|-----------------|
+| NLP Server | Implemented | `NlpService.java` | `POST /api/nlp/analyze` |
+| GraphRAG Server | Implemented | `GraphRagService.java` | `POST /api/v1/analyze/input` |
+| Statistics Server | Planned | - | - |
+
+### Contract Type Mapping
+
+Main server uses English enums, NLP/GraphRAG use Turkish snake_case. `ContractTypeMapping.java` handles conversion:
+
+| Main Server | NLP / GraphRAG |
+|-------------|----------------|
+| SALES | satis_sozlesmesi |
+| RENTAL | kira_sozlesmesi |
+| SERVICE | hizmet_sozlesmesi |
+| EMPLOYMENT | is_sozlesmesi |
+| NDA | gizlilik_sozlesmesi |
+
+### Analysis Pipeline Flow
+
+```
+Client → POST /api/analysis/analyze { "text": "..." }
+  → AnalysisService (orchestrator)
+    1. NlpService → NLP Server :8001 (sözleşme tipi + entity extraction)
+    2. GraphRagService → GraphRAG Server :8000 (eksik alan analizi + öneriler)
+    3. Sonuçları birleştir → FullAnalysisResponse
+  ← Client'a birleştirilmiş JSON döner
+```
+
+GraphRAG servisi erişilemezse, sistem sadece NLP sonucuyla devam eder (graceful degradation).
 
 ---
 
@@ -248,6 +294,57 @@ POST /api/auth/login     - Login and get JWT token
 ```
 GET  /api/users/me       - Get current user profile
 PUT  /api/users/me       - Update current user profile
+```
+
+### Contract Endpoints (Requires valid JWT token)
+
+```
+POST   /api/contracts                  - Create new contract (DRAFT)
+GET    /api/contracts                  - List user's contracts
+GET    /api/contracts/{id}             - Get contract by ID
+PUT    /api/contracts/{id}             - Update contract
+DELETE /api/contracts/{id}             - Delete contract
+POST   /api/contracts/{id}/finalize    - Send contract for approval (DRAFT → PENDING)
+GET    /api/contracts/pending-approval - List pending approvals
+GET    /api/contracts/stats            - Get contract statistics
+POST   /api/contracts/{id}/approve     - Approve contract
+POST   /api/contracts/{id}/reject      - Reject contract
+```
+
+### Analysis Endpoints - NLP + GraphRAG Orchestration (Requires valid JWT token)
+
+```
+POST /api/analysis/analyze  - Analyze free text → NLP → GraphRAG pipeline
+```
+
+**Request:**
+```json
+{
+  "text": "Ahmet Yılmaz ile Mehmet Demir arasında aylık 5000 TL kira sözleşmesi yapılacak."
+}
+```
+
+**Response:**
+```json
+{
+  "contract_type": "RENTAL",
+  "contract_type_display": "kira_sozlesmesi",
+  "confidence": 0.92,
+  "nlp_result": { ... },
+  "graphrag_result": {
+    "analysis": {
+      "completeness_score": 62.5,
+      "matched_fields": [...],
+      "missing_required": [...]
+    },
+    "suggestions": {
+      "suggestions": [
+        { "field_name": "Ödeme Günü", "message": "Kira ödemesi ayın kaçında yapılacak?" }
+      ]
+    }
+  },
+  "completeness_score": 62.5
+}
 ```
 
 ### Admin-Only Endpoints (Requires ADMIN role)
@@ -425,7 +522,10 @@ Current configuration:
 - Server port: 8080
 - Database: PostgreSQL on localhost:5432
 - JWT token expiration: 24 hours
-- CORS origins: localhost:3000, localhost:4200
+- CORS origins: localhost:3000, localhost:4200, localhost:19006, localhost:8081
+- NLP Service: localhost:8001
+- GraphRAG Service: localhost:8000
+- Statistics Service: localhost:8002
 
 To customize, edit: `src/main/resources/application.properties`
 
