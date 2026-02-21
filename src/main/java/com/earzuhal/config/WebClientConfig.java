@@ -21,4 +21,11 @@ public class WebClientConfig {
                 .baseUrl(baseUrl)
                 .build();
     }
+
+    @Bean
+    public WebClient statisticsWebClient(@Value("${services.statistics.base-url}") String baseUrl) {
+        return WebClient.builder()
+                .baseUrl(baseUrl)
+                .build();
+    }
 }
