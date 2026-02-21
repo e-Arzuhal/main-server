@@ -59,6 +59,12 @@ public class ContractService {
         return convertToResponse(contract);
     }
 
+    /** PDF üretimi için tam entity döndürür (user lazy-load dahil) */
+    public Contract getEntityById(Long id) {
+        return contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+    }
+
     @Transactional
     public ContractResponse update(Long id, ContractRequest request) {
         Contract contract = contractRepository.findById(id)
