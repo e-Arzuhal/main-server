@@ -4,8 +4,7 @@ Main backend server for the e-Arzuhal platform.
 
 This Spring Boot application acts as the central orchestrator for the e-Arzuhal system.
 It exposes REST APIs for mobile and web clients, coordinates calls to external services
-(NLP, GraphRAG, statistics, etc.), manages contract workflows, and handles PDF generation
-and approval flows.
+(NLP, GraphRAG, statistics), manages contract and petition workflows, and generates PDF documents.
 
 ---
 
@@ -16,47 +15,52 @@ The Main Server is responsible for:
 - Receiving requests from Mobile and Web clients
 - Acting as a lightweight API gateway / orchestrator
 - Calling external services:
-  - NLP service
-  - GraphRAG / Knowledge Graph service
-  - Statistics service
+  - NLP service (port 8001)
+  - GraphRAG / Knowledge Graph service (port 8000)
+  - Statistics service (port 8002)
 - Merging results from multiple services
 - Managing:
   - Users
-  - Contracts
+  - Contracts (sözleşmeler) — full CRUD + PDF export
+  - Petitions / Dilekçeler — full CRUD + PDF export
   - Approval and digital signature flows
-- Generating final PDF contract documents
+- Generating PDF documents from Thymeleaf HTML templates (openhtmltopdf)
 - Applying authentication and authorization (JWT / Spring Security)
-
-NOTE:
-NFC reading, camera scanning, and TC identity card reading are handled on the client side
-(mobile or web). The backend only validates and processes the received data.
 
 ---
 
 ## Tech Stack
 
-- Java: 21
-- Spring Boot: 4.0.2
-- Build Tool: Maven
-- Database: PostgreSQL
-- Architecture: MVC + Reactive HTTP Clients (WebClient)
-- Security: Spring Security
-- Persistence: Spring Data JPA
+| Layer | Technology |
+|-------|-----------|
+| Language | Java 21 |
+| Framework | Spring Boot 4.0.2 |
+| Build | Maven |
+| Database | PostgreSQL |
+| Security | Spring Security 6 + JWT (JJWT 0.12.6) |
+| Persistence | Spring Data JPA + Hibernate |
+| PDF Generation | openhtmltopdf-pdfbox 1.0.10 |
+| Template Engine | Thymeleaf |
+| HTTP Client | Spring WebFlux WebClient |
+| Logging | SLF4J + Logback (built-in) |
 
 ---
 
 ## Main Dependencies
 
-Key dependencies used in this project:
-
-- spring-boot-starter-web (REST API - MVC)
-- spring-boot-starter-webflux (WebClient for microservice communication)
-- spring-boot-starter-security (Authentication and authorization)
-- spring-boot-starter-data-jpa (Persistence layer)
-- spring-boot-starter-validation (Request validation)
-- jjwt-api, jjwt-impl, jjwt-jackson 0.12.6 (JWT token generation and validation)
-- postgresql (Database driver)
-- lombok (Boilerplate reduction)
+```xml
+spring-boot-starter-web           <!-- REST API -->
+spring-boot-starter-webflux       <!-- WebClient for microservices -->
+spring-boot-starter-security      <!-- Authentication -->
+spring-boot-starter-data-jpa      <!-- Persistence -->
+spring-boot-starter-validation    <!-- Request validation -->
+spring-boot-starter-thymeleaf     <!-- HTML template engine -->
+jjwt-api / jjwt-impl / jjwt-jackson 0.12.6   <!-- JWT -->
+openhtmltopdf-pdfbox 1.0.10       <!-- HTML → PDF -->
+openhtmltopdf-slf4j 1.0.10        <!-- PDF library logging -->
+postgresql                        <!-- DB driver -->
+lombok                            <!-- Boilerplate reduction -->
+```
 
 ---
 
@@ -64,48 +68,66 @@ Key dependencies used in this project:
 
 ```
 src/main/java/com/earzuhal/
-├── config/                    # Configuration classes
-│   ├── SecurityConfig.java    # Spring Security + JWT configuration
-│   ├── JwtConfig.java         # JWT properties
-│   └── WebConfig.java         # CORS configuration
-├── security/                  # Security components
-│   ├── jwt/                   # JWT token handling
+├── config/
+│   ├── SecurityConfig.java
+│   ├── JwtConfig.java
+│   └── WebConfig.java
+├── security/
+│   ├── jwt/
 │   │   ├── JwtTokenProvider.java
 │   │   ├── JwtAuthenticationFilter.java
 │   │   └── JwtAuthenticationEntryPoint.java
 │   └── CustomUserDetailsService.java
-├── controller/                # REST API endpoints
-│   ├── AuthController.java        # /api/auth/register, /api/auth/login
-│   ├── ContractController.java    # /api/contracts/**
-│   ├── UserController.java        # /api/users/**
-│   └── AnalysisController.java    # /api/analysis/** (NLP + GraphRAG orchestration)
-├── service/                   # Business logic
-│   ├── AuthService.java           # Registration, login logic
-│   ├── UserService.java           # User management
-│   ├── ContractService.java       # Contract CRUD & workflow
-│   ├── AnalysisService.java       # NLP + GraphRAG orchestration
-│   ├── NlpService.java            # NLP server HTTP client
-│   └── GraphRagService.java       # GraphRAG server HTTP client
-├── repository/                # Data access layer
+├── Controller/
+│   ├── AuthController.java          # /api/auth/**
+│   ├── ContractController.java      # /api/contracts/**
+│   ├── PetitionController.java      # /api/petitions/**
+│   ├── UserController.java          # /api/users/**
+│   └── AnalysisController.java      # /api/analysis/**
+├── Service/
+│   ├── AuthService.java
+│   ├── UserService.java
+│   ├── ContractService.java
+│   ├── PetitionService.java
+│   ├── PdfService.java              # HTML → PDF (Thymeleaf + openhtmltopdf)
+│   ├── AnalysisService.java
+│   ├── NlpService.java
+│   └── GraphRagService.java
+├── Repository/
 │   ├── UserRepository.java
-│   └── ContractRepository.java
-├── Model/                     # JPA entities
+│   ├── ContractRepository.java
+│   └── PetitionRepository.java
+├── Model/
 │   ├── User.java
-│   └── Contract.java
-├── dto/                       # Data Transfer Objects
-│   ├── auth/                  # Authentication DTOs
-│   ├── user/                  # User DTOs
-│   ├── contract/              # Contract DTOs
-│   └── analysis/              # NLP/GraphRAG integration DTOs
-│       ├── AnalyzeRequest.java
-│       ├── NlpResponse.java
-│       ├── GraphRagResponse.java
-│       ├── FullAnalysisResponse.java
-│       └── ContractTypeMapping.java
-├── exception/                 # Exception handling
+│   ├── Contract.java
+│   └── Petition.java
+├── dto/
+│   ├── auth/
+│   ├── user/
+│   ├── contract/
+│   ├── petition/
+│   │   ├── PetitionRequest.java
+│   │   └── PetitionResponse.java
+│   └── analysis/
+├── exception/
 │   ├── GlobalExceptionHandler.java
-│   └── Custom exceptions...
+│   └── (custom exceptions)
 └── MainServerApp.java
+
+src/main/resources/
+├── application.properties
+└── templates/pdf/
+    ├── contracts/
+    │   ├── kira_sozlesmesi.html
+    │   ├── borc_sozlesmesi.html
+    │   ├── hizmet_sozlesmesi.html
+    │   ├── satis_sozlesmesi.html
+    │   ├── is_sozlesmesi.html
+    │   ├── vekaletname.html
+    │   ├── taahhutname.html
+    │   └── genel_sozlesme.html      # fallback template
+    └── petitions/
+        └── dilekce.html
 ```
 
 ---
@@ -115,14 +137,12 @@ src/main/java/com/earzuhal/
 ### Prerequisites
 
 - Java 21
-- PostgreSQL running locally or remotely
+- PostgreSQL running locally
 - Maven 3.9+
 
 ---
 
 ### 1. Configure Database
-
-Create a PostgreSQL database:
 
 ```sql
 CREATE DATABASE earzuhal_main_server;
@@ -131,8 +151,6 @@ CREATE DATABASE earzuhal_main_server;
 ---
 
 ### 2. Set Environment Variables
-
-**CRITICAL**: Before running the application, you MUST set these environment variables:
 
 **Windows PowerShell:**
 ```powershell
@@ -152,32 +170,32 @@ export POSTGRES_DB_PASSWORD="your_postgres_password"
 export JWT_SECRET="your-very-long-secret-key-at-least-512-bits-for-hs512-algorithm"
 ```
 
-**Generate a secure JWT_SECRET:**
-```bash
-# Linux/Mac
-openssl rand -base64 64
-
-# Or use any strong random string (minimum 512 bits for HS512)
-```
-
 ⚠️ **NEVER commit JWT_SECRET to version control!**
 
 ---
 
-### 3. Install Dependencies
+### 3. Font Setup (Turkish Character Support in PDFs)
+
+PDF generation requires a font with Turkish character support (İ, ı, Ğ, ğ, Ş, ş).
+
+**Development (Windows):** Times New Roman is used automatically from `C:\Windows\Fonts\`.
+
+**Production (Linux/Docker):** Add Noto Serif to the classpath:
+
+1. Download from https://fonts.google.com/specimen/Noto+Serif
+2. Place `NotoSerif-Regular.ttf` and `NotoSerif-Bold.ttf` in:
+   ```
+   src/main/resources/fonts/
+   ```
+3. The fonts are picked up automatically by `PdfService`.
+
+---
+
+### 4. Build and Run
 
 ```bash
 cd main-server
 ./mvnw clean install
-```
-
----
-
-### 4. Run the Application
-
-Using Maven wrapper:
-
-```bash
 ./mvnw spring-boot:run
 ```
 
@@ -188,19 +206,103 @@ Or build and run JAR:
 java -jar target/main_server-0.0.1-SNAPSHOT.jar
 ```
 
-Application will start on:
+Application runs on: `http://localhost:8080`
+
+---
+
+## API Endpoints
+
+### Public Endpoints (No Auth)
 
 ```
-http://localhost:8080
+POST /api/auth/register   Register new user
+POST /api/auth/login      Login → returns JWT token
+```
+
+### User Endpoints (JWT required)
+
+```
+GET  /api/users/me        Get current user profile
+PUT  /api/users/me        Update profile
+```
+
+### Contract Endpoints (JWT required)
+
+```
+POST   /api/contracts                   Create contract (status: DRAFT)
+GET    /api/contracts                   List current user's contracts
+GET    /api/contracts/{id}              Get contract by ID
+PUT    /api/contracts/{id}              Update contract
+DELETE /api/contracts/{id}             Delete contract
+POST   /api/contracts/{id}/complete     Mark contract as COMPLETED
+GET    /api/contracts/{id}/pdf          Download contract as PDF
+POST   /api/contracts/{id}/finalize     Send for approval (DRAFT → PENDING)
+POST   /api/contracts/{id}/approve      Approve contract
+POST   /api/contracts/{id}/reject       Reject contract
+GET    /api/contracts/pending-approval  List pending approvals
+GET    /api/contracts/stats             Contract statistics
+```
+
+### Petition / Dilekçe Endpoints (JWT required)
+
+```
+POST   /api/petitions                   Create petition (status: DRAFT)
+GET    /api/petitions                   List current user's petitions
+GET    /api/petitions/{id}              Get petition by ID
+PUT    /api/petitions/{id}              Update petition
+DELETE /api/petitions/{id}             Delete petition
+POST   /api/petitions/{id}/complete     Mark petition as COMPLETED
+GET    /api/petitions/{id}/pdf          Download petition as PDF
+```
+
+**Create Petition Request body:**
+```json
+{
+  "kurum": "T.C. İstanbul Valiliği",
+  "kurumAdresi": "İstanbul, Türkiye",
+  "yetkili": "Sayın Vali",
+  "konu": "İzin Talebi",
+  "govde": "Sayın Yetkili,\n\nBu dilekçe ile ..."
+}
+```
+
+**PDF Download Response:** `Content-Type: application/pdf` — binary attachment.
+
+### Analysis Endpoints (JWT required)
+
+```
+POST /api/analysis/analyze   NLP + GraphRAG pipeline (sözleşme türü tespiti + eksik alan analizi)
+```
+
+### Admin Endpoints (ADMIN role required)
+
+```
+GET    /api/users        List all users
+GET    /api/users/{id}   Get user by ID
+PUT    /api/users/{id}   Update user
+DELETE /api/users/{id}   Delete user
 ```
 
 ---
 
+## Contract Type Mapping
+
+PdfService resolves the correct template based on the contract `type` field:
+
+| Contract Type | Template |
+|---------------|----------|
+| `kira_sozlesmesi` / `rental` | Kira Sözleşmesi |
+| `borc_sozlesmesi` / `other` | Borç Sözleşmesi |
+| `hizmet_sozlesmesi` / `service` | Hizmet Sözleşmesi |
+| `satis_sozlesmesi` / `sales` | Satış Sözleşmesi |
+| `is_sozlesmesi` / `employment` | İş Sözleşmesi |
+| `vekaletname` | Vekaletname |
+| `taahhutname` | Taahhütname |
+| (any other) | Genel Sözleşme (fallback) |
+
+---
+
 ## External Services Integration
-
-The main server communicates with other microservices via HTTP (REST) using Spring WebClient.
-
-### Service URLs (application.properties)
 
 ```properties
 services.nlp.base-url=${NLP_SERVICE_URL:http://localhost:8001}
@@ -208,341 +310,68 @@ services.graphrag.base-url=${GRAPHRAG_SERVICE_URL:http://localhost:8000}
 services.statistics.base-url=${STATISTICS_SERVICE_URL:http://localhost:8002}
 ```
 
-### Implementation Status
+| Service | Status | Class |
+|---------|--------|-------|
+| NLP Server | ✅ Implemented | `NlpService.java` |
+| GraphRAG Server | ✅ Implemented | `GraphRagService.java` |
+| Statistics Server | 🔄 Planned | — |
 
-| Service | Status | Class | Endpoint Called |
-|---------|--------|-------|-----------------|
-| NLP Server | Implemented | `NlpService.java` | `POST /api/nlp/analyze` |
-| GraphRAG Server | Implemented | `GraphRagService.java` | `POST /api/v1/analyze/input` |
-| Statistics Server | Planned | - | - |
+---
 
-### Contract Type Mapping
+## Logging
 
-Main server uses English enums, NLP/GraphRAG use Turkish snake_case. `ContractTypeMapping.java` handles conversion:
+Logging is configured in `application.properties`:
 
-| Main Server | NLP / GraphRAG |
-|-------------|----------------|
-| SALES | satis_sozlesmesi |
-| RENTAL | kira_sozlesmesi |
-| SERVICE | hizmet_sozlesmesi |
-| EMPLOYMENT | is_sozlesmesi |
-| NDA | gizlilik_sozlesmesi |
-
-### Analysis Pipeline Flow
-
-```
-Client → POST /api/analysis/analyze { "text": "..." }
-  → AnalysisService (orchestrator)
-    1. NlpService → NLP Server :8001 (sözleşme tipi + entity extraction)
-    2. GraphRagService → GraphRAG Server :8000 (eksik alan analizi + öneriler)
-    3. Sonuçları birleştir → FullAnalysisResponse
-  ← Client'a birleştirilmiş JSON döner
+```properties
+logging.level.com.earzuhal=DEBUG
+logging.level.org.springframework.web=INFO
+logging.level.org.springframework.security=INFO
+logging.level.com.openhtmltopdf=WARN
+logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
 ```
 
-GraphRAG servisi erişilemezse, sistem sadece NLP sonucuyla devam eder (graceful degradation).
+All unhandled exceptions are logged at ERROR level with full stack traces by `GlobalExceptionHandler`.
+PdfService logs at DEBUG level for each PDF generation call and at ERROR level if rendering fails.
 
 ---
 
 ## Security & Authentication
 
-### Implementation Status: ✅ COMPLETE
-
-The application implements comprehensive security using:
-
-- **Spring Security 6.x** - Full security framework
-- **JWT (JSON Web Tokens)** - Stateless authentication
-- **BCrypt Password Hashing** - Secure password storage (strength 10)
-- **Role-Based Access Control (RBAC)** - USER and ADMIN roles
-- **Global Exception Handling** - Consistent error responses
-- **Input Validation** - Jakarta Validation on all endpoints
+- **Spring Security 6.x** — Full security framework
+- **JWT (JJWT 0.12.6)** — Stateless auth, 24-hour expiration
+- **BCrypt** — Password hashing (strength 10)
+- **RBAC** — USER and ADMIN roles
+- **Input Validation** — Jakarta Validation on all request bodies
 
 ### Authentication Flow
 
-1. **Registration**: User registers via `/api/auth/register`
-   - Password is hashed with BCrypt
-   - User is saved with role "USER"
-   - JWT token is generated and returned
-
-2. **Login**: User logs in via `/api/auth/login`
-   - Credentials are validated
-   - JWT token is generated and returned
-   - Token expires in 24 hours
-
-3. **Protected Requests**: Client includes token in Authorization header
-   - `Authorization: Bearer <jwt-token>`
-   - Token is validated on each request
-   - User context is set in SecurityContext
-
-### Roles
-
-- **USER**: Can access own profile (`/api/users/me`)
-- **ADMIN**: Can manage all users (`/api/users/**`)
-
----
-
-## API Endpoints
-
-### Public Endpoints (No Authentication Required)
-
-```
-POST /api/auth/register  - Register new user
-POST /api/auth/login     - Login and get JWT token
-```
-
-### Authenticated Endpoints (Requires valid JWT token)
-
-```
-GET  /api/users/me       - Get current user profile
-PUT  /api/users/me       - Update current user profile
-```
-
-### Contract Endpoints (Requires valid JWT token)
-
-```
-POST   /api/contracts                  - Create new contract (DRAFT)
-GET    /api/contracts                  - List user's contracts
-GET    /api/contracts/{id}             - Get contract by ID
-PUT    /api/contracts/{id}             - Update contract
-DELETE /api/contracts/{id}             - Delete contract
-POST   /api/contracts/{id}/finalize    - Send contract for approval (DRAFT → PENDING)
-GET    /api/contracts/pending-approval - List pending approvals
-GET    /api/contracts/stats            - Get contract statistics
-POST   /api/contracts/{id}/approve     - Approve contract
-POST   /api/contracts/{id}/reject      - Reject contract
-```
-
-### Analysis Endpoints - NLP + GraphRAG Orchestration (Requires valid JWT token)
-
-```
-POST /api/analysis/analyze  - Analyze free text → NLP → GraphRAG pipeline
-```
-
-**Request:**
-```json
-{
-  "text": "Ahmet Yılmaz ile Mehmet Demir arasında aylık 5000 TL kira sözleşmesi yapılacak."
-}
-```
-
-**Response:**
-```json
-{
-  "contract_type": "RENTAL",
-  "contract_type_display": "kira_sozlesmesi",
-  "confidence": 0.92,
-  "nlp_result": { ... },
-  "graphrag_result": {
-    "analysis": {
-      "completeness_score": 62.5,
-      "matched_fields": [...],
-      "missing_required": [...]
-    },
-    "suggestions": {
-      "suggestions": [
-        { "field_name": "Ödeme Günü", "message": "Kira ödemesi ayın kaçında yapılacak?" }
-      ]
-    }
-  },
-  "completeness_score": 62.5
-}
-```
-
-### Admin-Only Endpoints (Requires ADMIN role)
-
-```
-GET    /api/users        - List all users
-GET    /api/users/{id}   - Get user by ID
-PUT    /api/users/{id}   - Update user
-DELETE /api/users/{id}   - Delete user
-```
-
----
-
-## Testing the API
-
-### 1. Register a New User
-
-```bash
-POST http://localhost:8080/api/auth/register
-Content-Type: application/json
-
-{
-  "username": "testuser",
-  "email": "test@example.com",
-  "password": "Test1234",
-  "firstName": "Test",
-  "lastName": "User"
-}
-```
-
-**Response:**
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzUxMiJ9...",
-  "tokenType": "Bearer",
-  "expiresIn": 86400000,
-  "userInfo": {
-    "id": 1,
-    "username": "testuser",
-    "email": "test@example.com",
-    "firstName": "Test",
-    "lastName": "User",
-    "role": "USER",
-    "isActive": true
-  }
-}
-```
-
-### 2. Login
-
-```bash
-POST http://localhost:8080/api/auth/login
-Content-Type: application/json
-
-{
-  "usernameOrEmail": "testuser",
-  "password": "Test1234"
-}
-```
-
-### 3. Access Protected Endpoint
-
-```bash
-GET http://localhost:8080/api/users/me
-Authorization: Bearer eyJhbGciOiJIUzUxMiJ9...
-```
-
-### 4. Create First Admin User
-
-After registering a user, update their role in the database:
-
-```sql
-UPDATE users SET role = 'ADMIN' WHERE username = 'adminuser';
-```
-
-Then login again to get a new token with ADMIN role.
-
----
-
-## Testing
-
-Run all tests with:
-
-mvn test
-
----
-
-## Future Improvements
-
-### Security Enhancements
-- JWT refresh token mechanism
-- Token blacklist (for logout)
-- Email verification on registration
-- Password reset via email
-- Account lockout after failed login attempts
-- Two-factor authentication (2FA)
-- Social OAuth2 login (Google, GitHub)
-- Rate limiting on authentication endpoints
-
-### Infrastructure
-- Circuit breakers and retries (Resilience4j)
-- Async messaging (Kafka or RabbitMQ)
-- Object storage for PDFs (S3 or MinIO)
-- API documentation (OpenAPI / Swagger)
-- Observability (metrics and tracing)
-- gRPC for high-throughput NLP calls
-- Redis caching for performance
-
-### Features
-- User profile pictures
-- Audit logging for security events
-- Soft delete for users
-- Multi-language support
-- Advanced search and filtering
-
----
-
-## Important Security Notes
-
-⚠️ **Production Deployment Checklist:**
-
-1. **JWT Secret**: MUST be changed to a strong, random value (512+ bits)
-   - Generate with: `openssl rand -base64 64`
-   - Store in environment variables or secrets manager
-   - NEVER commit to version control
-
-2. **Database Password**: Use strong passwords
-   - Store in environment variables
-   - Use different credentials for dev/prod
-
-3. **CORS**: Update `cors.allowed-origins` in application.properties
-   - Only allow trusted frontend domains
-   - Never use `*` (allow all) in production
-
-4. **HTTPS**: Always use HTTPS in production
-   - JWT tokens can be intercepted over HTTP
-   - Use a reverse proxy (nginx, Caddy) for TLS termination
-
-5. **Token Expiration**: Current setting is 24 hours
-   - Adjust based on security requirements
-   - Consider implementing refresh tokens for longer sessions
-
-6. **Rate Limiting**: Consider adding rate limiting to prevent brute force attacks
+1. `POST /api/auth/register` → returns JWT
+2. `POST /api/auth/login` → returns JWT
+3. All protected requests: `Authorization: Bearer <token>`
 
 ---
 
 ## Troubleshooting
 
-### "POSTGRES_DB_PASSWORD is not set"
-- Set the environment variable before running
-- Check your shell session
-
-### "Invalid JWT signature" or "Expired JWT token"
-- Token has expired (24 hours)
-- Login again to get a new token
-- Check JWT_SECRET is consistent
-
-### "403 Forbidden" on admin endpoints
-- Your user role is not ADMIN
-- Update role in database: `UPDATE users SET role = 'ADMIN' WHERE username = 'youruser';`
-- Login again to refresh token
-
-### IDE shows compilation errors
-- Run `./mvnw clean install` first
-- Spring Security may show false positives in IDE
-- Trust Maven build over IDE errors
+| Problem | Solution |
+|---------|---------|
+| `POSTGRES_DB_PASSWORD is not set` | Set the env variable before starting |
+| `Invalid JWT signature` | Token expired or wrong secret — login again |
+| `403 Forbidden` on admin routes | Update role: `UPDATE users SET role='ADMIN' WHERE username='...'` then login again |
+| PDF shows `?` boxes for Turkish chars | Add Noto Serif fonts to `src/main/resources/fonts/` (see Font Setup above) |
+| PDF 500 error | Check server logs — exception is now logged at ERROR level with full stack trace |
 
 ---
 
-## Configuration Files
+## Important Security Notes
 
-### application.properties
-
-Current configuration:
-- Server port: 8080
-- Database: PostgreSQL on localhost:5432
-- JWT token expiration: 24 hours
-- CORS origins: localhost:3000, localhost:4200, localhost:19006, localhost:8081
-- NLP Service: localhost:8001
-- GraphRAG Service: localhost:8000
-- Statistics Service: localhost:8002
-
-To customize, edit: `src/main/resources/application.properties`
-
----
-
-## Notes
-
-- This project is designed to be extensible and service-oriented
-- Business logic is intentionally kept thin in controllers
-- Heavy processing lives in external specialized services
-- Password are NEVER returned in API responses (DTO pattern)
-- All sensitive operations require authentication
-- ADMIN role required for user management operations
+1. **JWT Secret**: Must be changed for production. Generate with `openssl rand -base64 64`.
+2. **Database Password**: Use environment variables, never hardcode.
+3. **CORS**: Update `cors.allowed-origins` to your production domains.
+4. **HTTPS**: Always use HTTPS in production.
 
 ---
 
 ## Maintainer
 
-e-Arzuhal Team
-Main Server – Core Backend
+e-Arzuhal Team — Main Server · Core Backend

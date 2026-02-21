@@ -1,11 +1,15 @@
 package com.earzuhal.Controller;
 
+import com.earzuhal.Model.Contract;
 import com.earzuhal.Service.ContractService;
+import com.earzuhal.Service.PdfService;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,9 +22,11 @@ import java.util.List;
 public class ContractController {
 
     private final ContractService contractService;
+    private final PdfService pdfService;
 
-    public ContractController(ContractService contractService) {
+    public ContractController(ContractService contractService, PdfService pdfService) {
         this.contractService = contractService;
+        this.pdfService = pdfService;
     }
 
     @PostMapping
@@ -86,6 +92,21 @@ public class ContractController {
     public ResponseEntity<ContractResponse> reject(@PathVariable Long id) {
         ContractResponse contract = contractService.reject(id);
         return ResponseEntity.ok(contract);
+    }
+
+    /** Sözleşmeyi PDF olarak indir */
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
+        Contract contract = contractService.getEntityById(id);
+        byte[] pdf = pdfService.generateContractPdf(contract);
+
+        String filename = String.format("sozlesme-%06d.pdf", id);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("attachment", filename);
+        headers.setContentLength(pdf.length);
+
+        return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
     }
 
     private String getCurrentUsername() {
