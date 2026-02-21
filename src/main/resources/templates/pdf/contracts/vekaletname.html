@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="tr">
+<head>
+    <meta charset="UTF-8"/>
+    <style>
+        @page { size: A4; margin: 2.5cm 2cm 2.5cm 2cm; }
+        body { font-family: 'Times New Roman', 'Noto Serif', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.7; margin: 0; padding: 0; }
+        .doc-header { text-align: center; border-bottom: 2px solid #1a1a5e; padding-bottom: 12px; margin-bottom: 24px; }
+        .brand { font-size: 9pt; color: #1a1a5e; letter-spacing: 2px; font-weight: bold; }
+        .doc-title { font-size: 16pt; font-weight: bold; color: #1a1a5e; margin: 6px 0 4px 0; letter-spacing: 1px; }
+        .doc-ref { font-size: 9pt; color: #555; margin: 0; }
+        .section { margin-bottom: 18px; }
+        .section-title { font-size: 11pt; font-weight: bold; color: #1a1a5e; border-bottom: 1px solid #ccd; padding-bottom: 2px; margin-bottom: 8px; }
+        table.parties { width: 100%; border-collapse: collapse; }
+        table.parties td { padding: 5px 8px; vertical-align: top; }
+        table.parties td:first-child { font-weight: bold; width: 180px; color: #333; }
+        .content-box { background: #fafafa; border: 1px solid #dde; border-radius: 3px; padding: 12px 14px; white-space: pre-wrap; font-size: 10.5pt; }
+        .formal-text { font-size: 11pt; line-height: 1.8; text-align: justify; }
+        .notary-box { border: 1px solid #aaa; border-radius: 4px; padding: 12px; margin-top: 20px; font-size: 9.5pt; color: #555; background: #f9f9f9; }
+        .signatures { margin-top: 40px; page-break-inside: avoid; }
+        .sig-row { display: table; width: 100%; }
+        .sig-cell { display: table-cell; width: 50%; vertical-align: top; text-align: center; padding: 0 20px; }
+        .sig-line { border-top: 1px solid #333; margin: 40px 20px 6px 20px; }
+        .sig-label { font-weight: bold; font-size: 10pt; color: #1a1a5e; }
+        .sig-name { font-size: 10pt; margin-top: 4px; }
+        .sig-date { font-size: 9pt; color: #555; margin-top: 2px; }
+        .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #999; border-top: 1px solid #ddd; padding-top: 6px; }
+        .watermark-draft { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(200,200,200,0.18); font-weight: bold; z-index: -1; }
+    </style>
+</head>
+<body>
+    <div th:if="${contract.status == 'DRAFT'}" class="watermark-draft">TASLAK</div>
+
+    <div class="doc-header">
+        <div class="brand">e-ARZUHAL — DİJİTAL HUKUK SİSTEMİ</div>
+        <div class="doc-title">VEKALETNAME</div>
+        <div class="doc-ref">
+            Belge No: <span th:text="${contractId}">EA-000001</span> &#160;|&#160;
+            Tarih: <span th:text="${currentDate}">01 Ocak 2026</span>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">TARAFLAR</div>
+        <table class="parties">
+            <tr>
+                <td>VEKİL EDEN:</td>
+                <td th:text="${ownerFullName}">Ad Soyad</td>
+            </tr>
+            <tr>
+                <td>VEKİL:</td>
+                <td th:text="${contract.counterpartyName != null ? contract.counterpartyName : '—'}">Vekil Adı</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">YETKİ KAPSAMI</div>
+        <p class="formal-text">
+            Ben, aşağıda imzası bulunan <strong th:text="${ownerFullName}">Ad Soyad</strong>,
+            <strong th:text="${contract.counterpartyName != null ? contract.counterpartyName : '——'}">Vekil Adı</strong>'nı
+            yetkili vekilim olarak tayin ettiğimi ve aşağıda belirtilen konularda adıma hareket etme yetkisi verdiğimi beyan ederim.
+        </p>
+        <div class="content-box" th:text="${contract.content != null ? contract.content : 'Vekaletname kapsamı henüz oluşturulmamıştır.'}">
+            Yetki kapsamı.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">GENEL HÜKÜMLER</div>
+        <p>1. Bu vekaletname, belirtilen yetkiler dâhilinde vekilin yapacağı tüm işlemleri kapsar.</p>
+        <p>2. Vekil, yetkisi dışında herhangi bir işlem yapamaz ve vekilin iradesi dışında hareket edemez.</p>
+        <p>3. Bu vekaletname, vekil eden tarafından yazılı olarak iptal edilene kadar geçerliliğini korur.</p>
+    </div>
+
+    <div class="notary-box">
+        <strong>NOT:</strong> Bu belge e-Arzuhal sistemi üzerinden taslak olarak oluşturulmuştur.
+        Resmi işlemler için noterde tasdik ettirilmesi gerekmektedir.
+    </div>
+
+    <div class="signatures">
+        <div class="section-title">İMZA</div>
+        <div class="sig-row">
+            <div class="sig-cell">
+                <div class="sig-line"></div>
+                <div class="sig-label">VEKİL EDEN</div>
+                <div class="sig-name" th:text="${ownerFullName}">Ad Soyad</div>
+                <div class="sig-date">Tarih: <span th:text="${currentDate}">01/01/2026</span></div>
+            </div>
+            <div class="sig-cell">
+                <div class="sig-line"></div>
+                <div class="sig-label">VEKİL</div>
+                <div class="sig-name" th:text="${contract.counterpartyName != null ? contract.counterpartyName : '—'}">Vekil</div>
+                <div class="sig-date">Tarih: _______________</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-footer">
+        e-Arzuhal — Dijital Hukuk Sistemi — Belge No: <span th:text="${contractId}">EA-000001</span>
+    </div>
+</body>
+</html>
