@@ -4,7 +4,8 @@ Main backend server for the e-Arzuhal platform.
 
 This Spring Boot application acts as the central orchestrator for the e-Arzuhal system.
 It exposes REST APIs for mobile and web clients, coordinates calls to external services
-(NLP, GraphRAG, statistics), manages contract and petition workflows, and generates PDF documents.
+(NLP, GraphRAG, statistics), manages contract and petition workflows, generates PDF documents,
+and handles identity verification for digital signatures.
 
 ---
 
@@ -24,6 +25,7 @@ The Main Server is responsible for:
   - Contracts (sözleşmeler) — full CRUD + PDF export
   - Petitions / Dilekçeler — full CRUD + PDF export
   - Approval and digital signature flows
+  - **Identity Verification** — NFC / MRZ / manual TC Kimlik doğrulama
 - Generating PDF documents from Thymeleaf HTML templates (openhtmltopdf)
 - Applying authentication and authorization (JWT / Spring Security)
 
@@ -83,7 +85,8 @@ src/main/java/com/earzuhal/
 │   ├── ContractController.java      # /api/contracts/**
 │   ├── PetitionController.java      # /api/petitions/**
 │   ├── UserController.java          # /api/users/**
-│   └── AnalysisController.java      # /api/analysis/**
+│   ├── AnalysisController.java      # /api/analysis/**
+│   └── VerificationController.java  # /api/verification/**
 ├── Service/
 │   ├── AuthService.java
 │   ├── UserService.java
@@ -92,23 +95,27 @@ src/main/java/com/earzuhal/
 │   ├── PdfService.java              # HTML → PDF (Thymeleaf + openhtmltopdf)
 │   ├── AnalysisService.java
 │   ├── NlpService.java
-│   └── GraphRagService.java
+│   ├── GraphRagService.java
+│   └── VerificationService.java     # TC Kimlik doğrulama (checksum + maskeleme)
 ├── Repository/
 │   ├── UserRepository.java
 │   ├── ContractRepository.java
-│   └── PetitionRepository.java
+│   ├── PetitionRepository.java
+│   └── IdentityVerificationRepository.java
 ├── Model/
 │   ├── User.java
 │   ├── Contract.java
-│   └── Petition.java
+│   ├── Petition.java
+│   └── IdentityVerification.java    # identity_verifications tablosu
 ├── dto/
 │   ├── auth/
 │   ├── user/
 │   ├── contract/
 │   ├── petition/
-│   │   ├── PetitionRequest.java
-│   │   └── PetitionResponse.java
-│   └── analysis/
+│   ├── analysis/
+│   └── verification/
+│       ├── VerificationRequest.java
+│       └── VerificationResponse.java
 ├── exception/
 │   ├── GlobalExceptionHandler.java
 │   └── (custom exceptions)
@@ -116,6 +123,9 @@ src/main/java/com/earzuhal/
 
 src/main/resources/
 ├── application.properties
+├── fonts/                           # Türkçe karakter desteği (opsiyonel, prod için)
+│   ├── NotoSerif-Regular.ttf
+│   └── NotoSerif-Bold.ttf
 └── templates/pdf/
     ├── contracts/
     │   ├── kira_sozlesmesi.html
@@ -234,7 +244,6 @@ GET    /api/contracts                   List current user's contracts
 GET    /api/contracts/{id}              Get contract by ID
 PUT    /api/contracts/{id}              Update contract
 DELETE /api/contracts/{id}             Delete contract
-POST   /api/contracts/{id}/complete     Mark contract as COMPLETED
 GET    /api/contracts/{id}/pdf          Download contract as PDF
 POST   /api/contracts/{id}/finalize     Send for approval (DRAFT → PENDING)
 POST   /api/contracts/{id}/approve      Approve contract
@@ -266,7 +275,49 @@ GET    /api/petitions/{id}/pdf          Download petition as PDF
 }
 ```
 
-**PDF Download Response:** `Content-Type: application/pdf` — binary attachment.
+### Identity Verification Endpoints (JWT required)
+
+```
+POST /api/verification/identity   TC Kimlik doğrulama (NFC / MRZ / MANUAL)
+GET  /api/verification/status     Giriş yapan kullanıcının doğrulama durumu
+```
+
+**POST /api/verification/identity – Request body:**
+```json
+{
+  "tcNo": "12345678901",
+  "firstName": "Ali",
+  "lastName": "Yılmaz",
+  "dateOfBirth": "1990-05-15",
+  "method": "MANUAL",
+  "mrzData": null
+}
+```
+
+`method` değerleri: `"NFC"` | `"MRZ"` | `"MANUAL"`
+
+**Response (her iki endpoint):**
+```json
+{
+  "status": "VERIFIED",
+  "message": "Kimlik doğrulaması başarıyla tamamlandı.",
+  "tcNoMasked": "123******01",
+  "firstName": "Ali",
+  "lastName": "Yılmaz",
+  "verificationMethod": "MANUAL",
+  "verifiedAt": "2026-02-21T14:30:00Z",
+  "verified": true
+}
+```
+
+**TC Kimlik Numarası Doğrulama Algoritması (VerificationService.java):**
+```
+11 haneli, tamamı rakam; ilk hane ≠ 0
+d10 = (7*(d[0]+d[2]+d[4]+d[6]+d[8]) - (d[1]+d[3]+d[5]+d[7])) mod 10
+d11 = (d[0]+d[1]+...+d[9]) mod 10
+Maskeleme: "12345678901" → "123******01"
+Ham TC numarası veritabanına HİÇBİR ZAMAN kaydedilmez.
+```
 
 ### Analysis Endpoints (JWT required)
 
@@ -282,6 +333,34 @@ GET    /api/users/{id}   Get user by ID
 PUT    /api/users/{id}   Update user
 DELETE /api/users/{id}   Delete user
 ```
+
+---
+
+## Database Schema
+
+Tables are auto-created/updated by Hibernate (`ddl-auto=update`).
+
+| Tablo | Açıklama |
+|-------|----------|
+| `users` | Kullanıcı hesapları |
+| `contracts` | Sözleşmeler (DRAFT / PENDING / APPROVED / REJECTED / COMPLETED) |
+| `petitions` | Dilekçeler (DRAFT / COMPLETED) |
+| `identity_verifications` | TC Kimlik doğrulama kayıtları — users ile OneToOne ilişki |
+
+**identity_verifications kolonları:**
+
+| Kolon | Tip | Açıklama |
+|-------|-----|----------|
+| `id` | BIGSERIAL | PK |
+| `user_id` | BIGINT (FK, UNIQUE) | users.id |
+| `tc_no_masked` | VARCHAR(20) | "123******01" formatında |
+| `first_name` | VARCHAR(100) | |
+| `last_name` | VARCHAR(100) | |
+| `date_of_birth` | DATE | |
+| `verification_method` | VARCHAR(20) | NFC / MRZ / MANUAL |
+| `status` | VARCHAR(20) | VERIFIED / FAILED / PENDING |
+| `verified_at` | TIMESTAMPTZ | |
+| `created_at` | TIMESTAMPTZ | |
 
 ---
 
@@ -330,8 +409,9 @@ logging.level.com.openhtmltopdf=WARN
 logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
 ```
 
-All unhandled exceptions are logged at ERROR level with full stack traces by `GlobalExceptionHandler`.
-PdfService logs at DEBUG level for each PDF generation call and at ERROR level if rendering fails.
+- `GlobalExceptionHandler` — tüm unhandled exception'lar ERROR seviyesinde + full stack trace
+- `PdfService` — her PDF üretimi DEBUG, hata durumunda ERROR
+- `VerificationService` — başarılı doğrulama INFO seviyesinde loglanır
 
 ---
 
@@ -342,6 +422,7 @@ PdfService logs at DEBUG level for each PDF generation call and at ERROR level i
 - **BCrypt** — Password hashing (strength 10)
 - **RBAC** — USER and ADMIN roles
 - **Input Validation** — Jakarta Validation on all request bodies
+- **TC No Masking** — Ham TC kimlik numarası veritabanına kaydedilmez
 
 ### Authentication Flow
 
@@ -357,9 +438,10 @@ PdfService logs at DEBUG level for each PDF generation call and at ERROR level i
 |---------|---------|
 | `POSTGRES_DB_PASSWORD is not set` | Set the env variable before starting |
 | `Invalid JWT signature` | Token expired or wrong secret — login again |
-| `403 Forbidden` on admin routes | Update role: `UPDATE users SET role='ADMIN' WHERE username='...'` then login again |
-| PDF shows `?` boxes for Turkish chars | Add Noto Serif fonts to `src/main/resources/fonts/` (see Font Setup above) |
-| PDF 500 error | Check server logs — exception is now logged at ERROR level with full stack trace |
+| `403 Forbidden` on admin routes | `UPDATE users SET role='ADMIN' WHERE username='...'` then login again |
+| PDF shows `?` boxes for Turkish chars | Add Noto Serif fonts to `src/main/resources/fonts/` |
+| PDF 500 error | Check server logs — full stack trace in GlobalExceptionHandler |
+| `Geçersiz TC Kimlik Numarası` | 11 haneli, algoritmayı geçen geçerli bir TC No kullanın |
 
 ---
 
@@ -369,6 +451,7 @@ PdfService logs at DEBUG level for each PDF generation call and at ERROR level i
 2. **Database Password**: Use environment variables, never hardcode.
 3. **CORS**: Update `cors.allowed-origins` to your production domains.
 4. **HTTPS**: Always use HTTPS in production.
+5. **TC No**: Ham TC kimlik numarası veritabanında saklanmaz. Sadece `"123******01"` formatında maskelenmiş hali tutulur.
 
 ---
 
