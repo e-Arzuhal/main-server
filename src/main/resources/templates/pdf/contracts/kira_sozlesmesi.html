@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="tr">
+<head>
+    <meta charset="UTF-8"/>
+    <style>
+        @page { size: A4; margin: 2.5cm 2cm 2.5cm 2cm; }
+        body { font-family: 'Times New Roman', 'Noto Serif', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
+        .doc-header { text-align: center; border-bottom: 2px solid #1a1a5e; padding-bottom: 12px; margin-bottom: 20px; }
+        .brand { font-size: 9pt; color: #1a1a5e; letter-spacing: 2px; font-weight: bold; }
+        .doc-title { font-size: 16pt; font-weight: bold; color: #1a1a5e; margin: 6px 0 4px 0; letter-spacing: 1px; }
+        .doc-ref { font-size: 9pt; color: #555; margin: 0; }
+        .section { margin-bottom: 16px; }
+        .section-title { font-size: 11pt; font-weight: bold; color: #1a1a5e; border-bottom: 1px solid #ccd; padding-bottom: 2px; margin-bottom: 8px; }
+        table.parties { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+        table.parties td { padding: 4px 8px; vertical-align: top; }
+        table.parties td:first-child { font-weight: bold; width: 160px; color: #333; }
+        .content-box { background: #fafafa; border: 1px solid #dde; border-radius: 3px; padding: 12px 14px; white-space: pre-wrap; font-size: 10.5pt; }
+        .amount-box { display: inline-block; background: #eef0ff; border: 1px solid #99a; padding: 6px 14px; border-radius: 3px; font-size: 12pt; font-weight: bold; color: #1a1a5e; margin: 4px 0; }
+        .signatures { margin-top: 40px; page-break-inside: avoid; }
+        .sig-row { display: table; width: 100%; }
+        .sig-cell { display: table-cell; width: 50%; vertical-align: top; text-align: center; padding: 0 20px; }
+        .sig-line { border-top: 1px solid #333; margin: 40px 20px 6px 20px; }
+        .sig-label { font-weight: bold; font-size: 10pt; color: #1a1a5e; }
+        .sig-name { font-size: 10pt; margin-top: 4px; }
+        .sig-date { font-size: 9pt; color: #555; margin-top: 2px; }
+        .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #999; border-top: 1px solid #ddd; padding-top: 6px; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 9pt; font-weight: bold; color: white; background: #888; }
+        .status-draft { background: #f0a500; }
+        .status-approved { background: #2d8a4e; }
+        .status-completed { background: #1a6ea8; }
+        .watermark-draft { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(200,200,200,0.18); font-weight: bold; z-index: -1; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div th:if="${contract.status == 'DRAFT'}" class="watermark-draft">TASLAK</div>
+
+    <div class="doc-header">
+        <div class="brand">e-ARZUHAL — DİJİTAL HUKUK SİSTEMİ</div>
+        <div class="doc-title">KİRA SÖZLEŞMESİ</div>
+        <div class="doc-ref">
+            Belge No: <span th:text="${contractId}">EA-000001</span> &#160;|&#160;
+            Tarih: <span th:text="${currentDate}">01 Ocak 2026</span> &#160;|&#160;
+            Durum:
+            <span class="status-badge"
+                  th:classappend="${contract.status == 'APPROVED' ? 'status-approved' : (contract.status == 'COMPLETED' ? 'status-completed' : 'status-draft')}"
+                  th:text="${contract.status}">TASLAK</span>
+        </div>
+    </div>
+
+    <!-- TARAFLAR -->
+    <div class="section">
+        <div class="section-title">MADDE 1 — TARAFLAR</div>
+        <table class="parties">
+            <tr>
+                <td>KİRAYA VEREN:</td>
+                <td th:text="${ownerFullName}">Ad Soyad</td>
+            </tr>
+            <tr>
+                <td>KİRACI:</td>
+                <td>
+                    <span th:text="${contract.counterpartyName != null ? contract.counterpartyName : '—'}">Kiracı Adı</span>
+                    <span th:if="${contract.counterpartyRole != null}"
+                          style="color:#666; font-size:9.5pt;"
+                          th:text="' (' + ${contract.counterpartyRole} + ')'"></span>
+                </td>
+            </tr>
+        </table>
+        <p style="font-size:10pt; color:#555; margin-top:6px;">
+            Yukarıda bilgileri yazılı taraflar arasında aşağıdaki koşullarda kira sözleşmesi akdedilmiştir.
+        </p>
+    </div>
+
+    <!-- KİRA BEDELİ -->
+    <div class="section" th:if="${contract.amount != null and !#strings.isEmpty(contract.amount)}">
+        <div class="section-title">MADDE 2 — KİRA BEDELİ</div>
+        <p>Aylık kira bedeli olarak belirlenmiştir:</p>
+        <div class="amount-box" th:text="${contract.amount}">5.000 TL</div>
+        <p style="font-size:10pt; color:#555;">
+            Kira bedeli her ayın birinci günü Kiraya Veren'in hesabına yatırılacaktır.
+        </p>
+    </div>
+
+    <!-- SÖZLEŞMENİN KAPSAMI -->
+    <div class="section">
+        <div class="section-title">MADDE 3 — SÖZLEŞMENİN KAPSAMI VE HÜKÜMLERİ</div>
+        <div class="content-box" th:text="${contract.content != null ? contract.content : 'Sözleşme içeriği henüz oluşturulmamıştır.'}">
+            İçerik buraya gelecek.
+        </div>
+    </div>
+
+    <!-- GENEL HÜKÜMLER -->
+    <div class="section">
+        <div class="section-title">MADDE 4 — GENEL HÜKÜMLER</div>
+        <p>1. İşbu sözleşme, taraflarca okunup anlaşılarak imzalanmıştır.</p>
+        <p>2. Sözleşmeden doğacak anlaşmazlıklarda Türkiye Cumhuriyeti mahkemeleri ve icra daireleri yetkilidir.</p>
+        <p>3. Bu sözleşme 4 madde ve 1 nüsha olarak düzenlenmiş olup tarafların tamamı birer nüsha almıştır.</p>
+    </div>
+
+    <!-- İMZALAR -->
+    <div class="signatures">
+        <div class="section-title">İMZALAR</div>
+        <div class="sig-row">
+            <div class="sig-cell">
+                <div class="sig-line"></div>
+                <div class="sig-label">KİRAYA VEREN</div>
+                <div class="sig-name" th:text="${ownerFullName}">Ad Soyad</div>
+                <div class="sig-date">Tarih: <span th:text="${currentDate}">01/01/2026</span></div>
+            </div>
+            <div class="sig-cell">
+                <div class="sig-line"></div>
+                <div class="sig-label">KİRACI</div>
+                <div class="sig-name" th:text="${contract.counterpartyName != null ? contract.counterpartyName : '—'}">Kiracı</div>
+                <div class="sig-date">Tarih: _______________</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="doc-footer">
+        e-Arzuhal — Dijital Hukuk Sistemi — Bu belge elektronik ortamda oluşturulmuştur.
+        Belge No: <span th:text="${contractId}">EA-000001</span>
+    </div>
+</body>
+</html>
