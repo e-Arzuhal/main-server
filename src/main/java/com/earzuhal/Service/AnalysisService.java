@@ -14,10 +14,12 @@ public class AnalysisService {
     private static final Logger log = LoggerFactory.getLogger(AnalysisService.class);
     private final NlpService nlpService;
     private final GraphRagService graphRagService;
+    private final StatisticsService statisticsService;
 
-    public AnalysisService(NlpService nlpService, GraphRagService graphRagService) {
+    public AnalysisService(NlpService nlpService, GraphRagService graphRagService, StatisticsService statisticsService) {
         this.nlpService = nlpService;
         this.graphRagService = graphRagService;
+        this.statisticsService = statisticsService;
     }
 
     /**
@@ -57,7 +59,10 @@ public class AnalysisService {
             log.warn("GraphRAG servisi erişilemedi, sadece NLP sonucu ile devam ediliyor: {}", e.getMessage());
         }
 
-        // Adım 3: Birleştir ve dön
+        // Adım 3: Statistics-server'a asenkron kaydet (fire-and-forget)
+        statisticsService.recordAsync(turkishType, graphRagResult, completenessScore);
+
+        // Adım 4: Birleştir ve dön
         return FullAnalysisResponse.builder()
                 .contractType(englishType)
                 .contractTypeDisplay(turkishType)
