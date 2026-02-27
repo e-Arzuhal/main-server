@@ -6,7 +6,9 @@ import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.exception.BadRequestException;
 import com.earzuhal.exception.ResourceNotFoundException;
+import com.earzuhal.exception.UnauthorizedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,10 +21,13 @@ public class ContractService {
 
     private final ContractRepository contractRepository;
     private final UserService userService;
+    private final DisclaimerService disclaimerService;
 
-    public ContractService(ContractRepository contractRepository, UserService userService) {
+    public ContractService(ContractRepository contractRepository, UserService userService,
+                           DisclaimerService disclaimerService) {
         this.contractRepository = contractRepository;
         this.userService = userService;
+        this.disclaimerService = disclaimerService;
     }
 
     @Transactional
@@ -53,22 +58,26 @@ public class ContractService {
                 .collect(Collectors.toList());
     }
 
-    public ContractResponse getById(Long id) {
+    public ContractResponse getById(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
         return convertToResponse(contract);
     }
 
     /** PDF üretimi için tam entity döndürür (user lazy-load dahil) */
-    public Contract getEntityById(Long id) {
-        return contractRepository.findById(id)
+    public Contract getEntityById(Long id, String username) {
+        Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
+        return contract;
     }
 
     @Transactional
-    public ContractResponse update(Long id, ContractRequest request) {
+    public ContractResponse update(Long id, ContractRequest request, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
 
         if (request.getTitle() != null) contract.setTitle(request.getTitle());
         if (request.getType() != null) contract.setType(request.getType());
@@ -83,16 +92,21 @@ public class ContractService {
     }
 
     @Transactional
-    public void delete(Long id) {
+    public void delete(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
         contractRepository.delete(contract);
     }
 
     @Transactional
-    public ContractResponse finalize(Long id) {
+    public ContractResponse finalize(Long id, String username) {
+        if (!disclaimerService.hasAccepted(username)) {
+            throw new BadRequestException("Sözleşme onaya gönderilebilmesi için yasal uyarıyı kabul etmeniz gerekmektedir");
+        }
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
         contract.setStatus("PENDING");
         contract.setUpdatedAt(OffsetDateTime.now());
         Contract updated = contractRepository.save(contract);
@@ -122,21 +136,34 @@ public class ContractService {
     }
 
     @Transactional
-    public ContractResponse approve(Long id) {
+    public ContractResponse approve(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        if (contract.getUser().getUsername().equals(username)) {
+            throw new UnauthorizedException("Kendi sözleşmenizi onaylayamazsınız");
+        }
         contract.setStatus("APPROVED");
         contract.setUpdatedAt(OffsetDateTime.now());
         return convertToResponse(contractRepository.save(contract));
     }
 
     @Transactional
-    public ContractResponse reject(Long id) {
+    public ContractResponse reject(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        if (contract.getUser().getUsername().equals(username)) {
+            throw new UnauthorizedException("Kendi sözleşmenizi reddederek iptal edemezsiniz; bunun yerine sözleşmeyi silin");
+        }
         contract.setStatus("REJECTED");
         contract.setUpdatedAt(OffsetDateTime.now());
         return convertToResponse(contractRepository.save(contract));
+    }
+
+    /** Sözleşme sahibi değilse 404 döner (kaynak maskeleme ile IDOR önleme) */
+    private void verifyOwnership(Contract contract, String username) {
+        if (!contract.getUser().getUsername().equals(username)) {
+            throw new ResourceNotFoundException("Contract not found with id: " + contract.getId());
+        }
     }
 
     private ContractResponse convertToResponse(Contract contract) {

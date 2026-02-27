@@ -45,26 +45,26 @@ public class ContractController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ContractResponse> getById(@PathVariable Long id) {
-        ContractResponse contract = contractService.getById(id);
+        ContractResponse contract = contractService.getById(id, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<ContractResponse> update(@PathVariable Long id,
                                                     @Valid @RequestBody ContractRequest request) {
-        ContractResponse contract = contractService.update(id, request);
+        ContractResponse contract = contractService.update(id, request, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        contractService.delete(id);
+        contractService.delete(id, getCurrentUsername());
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/finalize")
     public ResponseEntity<ContractResponse> finalize(@PathVariable Long id) {
-        ContractResponse contract = contractService.finalize(id);
+        ContractResponse contract = contractService.finalize(id, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
 
@@ -84,20 +84,20 @@ public class ContractController {
 
     @PostMapping("/{id}/approve")
     public ResponseEntity<ContractResponse> approve(@PathVariable Long id) {
-        ContractResponse contract = contractService.approve(id);
+        ContractResponse contract = contractService.approve(id, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
 
     @PostMapping("/{id}/reject")
     public ResponseEntity<ContractResponse> reject(@PathVariable Long id) {
-        ContractResponse contract = contractService.reject(id);
+        ContractResponse contract = contractService.reject(id, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
 
     /** Sözleşmeyi PDF olarak indir */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
-        Contract contract = contractService.getEntityById(id);
+        Contract contract = contractService.getEntityById(id, getCurrentUsername());
         byte[] pdf = pdfService.generateContractPdf(contract);
 
         String filename = String.format("sozlesme-%06d.pdf", id);

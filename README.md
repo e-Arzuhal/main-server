@@ -162,25 +162,20 @@ CREATE DATABASE earzuhal_main_server;
 
 ### 2. Set Environment Variables
 
-**Windows PowerShell:**
-```powershell
-$env:POSTGRES_DB_PASSWORD="your_postgres_password"
-$env:JWT_SECRET="your-very-long-secret-key-at-least-512-bits-for-hs512-algorithm"
-```
+`.env.example` dosyasını kopyalayıp `.env` olarak kaydedin ve değerleri doldurun.
 
-**Windows CMD:**
-```cmd
-set POSTGRES_DB_PASSWORD=your_postgres_password
-set JWT_SECRET=your-very-long-secret-key-at-least-512-bits-for-hs512-algorithm
-```
+| Variable | Zorunlu | Açıklama |
+|----------|---------|----------|
+| `POSTGRES_DB_PASSWORD` | ✅ | PostgreSQL şifresi |
+| `JWT_SECRET` | ✅ | JWT imzalama anahtarı (min. 64 karakter). `openssl rand -base64 64` ile üret. |
+| `INTERNAL_API_KEY` | Prod'da ✅ | Python servislerine gönderilen dahili API anahtarı (`X-Internal-API-Key` header). `openssl rand -hex 32` ile üret. Python servislerin `.env` dosyasındaki `INTERNAL_API_KEY` ile aynı olmalı. |
+| `CORS_ALLOWED_ORIGINS` | Prod'da ✅ | Virgülle ayrılmış izinli frontend origin'leri. Varsayılan: `localhost:3000,...` |
+| `NLP_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8001` |
+| `GRAPHRAG_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8000` |
+| `STATISTICS_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8002` |
+| `CHATBOT_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8003` |
 
-**Linux/Mac:**
-```bash
-export POSTGRES_DB_PASSWORD="your_postgres_password"
-export JWT_SECRET="your-very-long-secret-key-at-least-512-bits-for-hs512-algorithm"
-```
-
-⚠️ **NEVER commit JWT_SECRET to version control!**
+⚠️ **NEVER commit `.env` to version control!**
 
 ---
 
@@ -227,6 +222,7 @@ Application runs on: `http://localhost:8080`
 ```
 POST /api/auth/register   Register new user
 POST /api/auth/login      Login → returns JWT token
+POST /api/auth/logout     Revoke current token (server-side blacklist)
 ```
 
 ### User Endpoints (JWT required)
@@ -319,6 +315,15 @@ Maskeleme: "12345678901" → "123******01"
 Ham TC numarası veritabanına HİÇBİR ZAMAN kaydedilmez.
 ```
 
+### Disclaimer Endpoints (JWT required)
+
+```
+GET  /api/disclaimer/status   Kullanıcının geçerli yasal uyarı versiyonunu kabul edip etmediğini döner
+POST /api/disclaimer/accept   Yasal uyarıyı kabul et (body: {"platform": "WEB"|"MOBILE"})
+```
+
+> `POST /api/contracts/{id}/finalize` çağrılmadan önce disclaimer kabul edilmiş olmalıdır.
+
 ### Analysis Endpoints (JWT required)
 
 ```
@@ -346,6 +351,8 @@ Tables are auto-created/updated by Hibernate (`ddl-auto=update`).
 | `contracts` | Sözleşmeler (DRAFT / PENDING / APPROVED / REJECTED / COMPLETED) |
 | `petitions` | Dilekçeler (DRAFT / COMPLETED) |
 | `identity_verifications` | TC Kimlik doğrulama kayıtları — users ile OneToOne ilişki |
+| `disclaimer_acceptances` | Yasal uyarı kabul kayıtları (versiyon + platform + tarih) |
+| `revoked_tokens` | Server-side JWT blacklist — logout sonrası geçersiz tokenlar |
 
 **identity_verifications kolonları:**
 
@@ -418,17 +425,23 @@ logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
 ## Security & Authentication
 
 - **Spring Security 6.x** — Full security framework
-- **JWT (JJWT 0.12.6)** — Stateless auth, 24-hour expiration
+- **JWT (JJWT 0.12.6)** — Stateless auth, 24-hour expiration, `jti` claim for revocation
 - **BCrypt** — Password hashing (strength 10)
 - **RBAC** — USER and ADMIN roles
 - **Input Validation** — Jakarta Validation on all request bodies
 - **TC No Masking** — Ham TC kimlik numarası veritabanına kaydedilmez
+- **IDOR Protection** — `ContractService` her işlemde sahiplik doğrulaması yapar (404 maskeleme)
+- **Self-Approval Prevention** — Sözleşme sahibi kendi sözleşmesini onaylayamaz
+- **Token Blacklist** — `POST /api/auth/logout` mevcut `jti`'yi `revoked_tokens` tablosuna ekler; her istekte kontrol edilir
+- **Disclaimer Gate** — Sözleşme finalize edilemez yasal uyarı kabul edilmeden
+- **Internal API Key** — Python servislere giden tüm çağrılara `X-Internal-API-Key` header eklenir
 
 ### Authentication Flow
 
-1. `POST /api/auth/register` → returns JWT
-2. `POST /api/auth/login` → returns JWT
-3. All protected requests: `Authorization: Bearer <token>`
+1. `POST /api/auth/register` → JWT döner (`jti` içerir)
+2. `POST /api/auth/login` → JWT döner
+3. Tüm korumalı istekler: `Authorization: Bearer <token>`
+4. `POST /api/auth/logout` → JWT blacklist'e eklenir (diğer cihazların token'ları geçerliliğini korur)
 
 ---
 
@@ -447,11 +460,13 @@ logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
 
 ## Important Security Notes
 
-1. **JWT Secret**: Must be changed for production. Generate with `openssl rand -base64 64`.
-2. **Database Password**: Use environment variables, never hardcode.
-3. **CORS**: Update `cors.allowed-origins` to your production domains.
-4. **HTTPS**: Always use HTTPS in production.
-5. **TC No**: Ham TC kimlik numarası veritabanında saklanmaz. Sadece `"123******01"` formatında maskelenmiş hali tutulur.
+1. **JWT Secret**: Mutlaka değiştirin. `openssl rand -base64 64` ile üretin.
+2. **Database Password**: Env var ile set edin, asla hardcode etmeyin.
+3. **CORS**: Production'da `CORS_ALLOWED_ORIGINS` env var'ını gerçek frontend URL'leriyle set edin.
+4. **Internal API Key**: Production'da `INTERNAL_API_KEY` set edin; tüm Python servisleri de aynı değerle set edilmeli.
+5. **HTTPS**: Production'da her zaman HTTPS kullanın.
+6. **TC No**: Ham TC kimlik numarası veritabanında saklanmaz. Sadece `"123******01"` formatında maskelenmiş hali tutulur.
+7. **Token Revocation**: Güvenlik ihlali durumunda `revoked_tokens` tablosuna token `jti`'si eklenebilir. Süresi dolmuş kayıtlar her gece 03:00'da otomatik temizlenir.
 
 ---
 
