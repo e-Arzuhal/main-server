@@ -6,28 +6,42 @@ import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.explanation.ClauseExplanationItem;
+import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import com.earzuhal.exception.BadRequestException;
 import com.earzuhal.exception.ResourceNotFoundException;
 import com.earzuhal.exception.UnauthorizedException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class ContractService {
 
+    private static final Logger log = LoggerFactory.getLogger(ContractService.class);
+
     private final ContractRepository contractRepository;
     private final UserService userService;
     private final DisclaimerService disclaimerService;
+    private final ExplanationService explanationService;
+    private final ObjectMapper objectMapper;
 
     public ContractService(ContractRepository contractRepository, UserService userService,
-                           DisclaimerService disclaimerService) {
+                           DisclaimerService disclaimerService, ExplanationService explanationService,
+                           ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userService = userService;
         this.disclaimerService = disclaimerService;
+        this.explanationService = explanationService;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -45,6 +59,17 @@ public class ContractService {
         contract.setUser(user);
         contract.setCreatedAt(OffsetDateTime.now());
         contract.setUpdatedAt(OffsetDateTime.now());
+
+        // Analiz bağlamı varsa madde açıklamaları üret ve JSON olarak sakla
+        if (request.getAnalysisContext() != null) {
+            try {
+                List<ClauseExplanationItem> explanations =
+                        explanationService.generate(request.getAnalysisContext());
+                contract.setClauseExplanations(objectMapper.writeValueAsString(explanations));
+            } catch (Exception e) {
+                log.warn("Madde açıklamaları üretilemedi, sözleşme açıklamasız oluşturuluyor: {}", e.getMessage());
+            }
+        }
 
         Contract saved = contractRepository.save(contract);
         return convertToResponse(saved);
@@ -71,6 +96,35 @@ public class ContractService {
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
         verifyOwnership(contract, username);
         return contract;
+    }
+
+    /**
+     * Sözleşmedeki her maddenin neden eklendiğini, hangi kanun maddesine dayandığını
+     * ve istatistiksel yaygınlığını açıklayan yanıtı döndürür.
+     */
+    public ContractExplanationResponse getExplanation(Long id, String username) {
+        Contract contract = contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+        verifyOwnership(contract, username);
+
+        List<ClauseExplanationItem> clauses = Collections.emptyList();
+        if (contract.getClauseExplanations() != null && !contract.getClauseExplanations().isBlank()) {
+            try {
+                clauses = objectMapper.readValue(
+                        contract.getClauseExplanations(),
+                        new TypeReference<List<ClauseExplanationItem>>() {});
+            } catch (Exception e) {
+                log.warn("Madde açıklamaları deserialize edilemedi, contract id={}: {}", id, e.getMessage());
+            }
+        }
+
+        return ContractExplanationResponse.builder()
+                .contractId(contract.getId())
+                .contractTitle(contract.getTitle())
+                .contractType(contract.getType())
+                .clauses(clauses)
+                .generatedAt(OffsetDateTime.now())
+                .build();
     }
 
     @Transactional
