@@ -1,5 +1,6 @@
 package com.earzuhal.security.jwt;
 
+import com.earzuhal.Service.TokenBlacklistService;
 import com.earzuhal.security.CustomUserDetailsService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -24,11 +25,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider,
-                                   CustomUserDetailsService customUserDetailsService) {
+                                   CustomUserDetailsService customUserDetailsService,
+                                   TokenBlacklistService tokenBlacklistService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.customUserDetailsService = customUserDetailsService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @Override
@@ -39,8 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = extractJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
-                String username = jwtTokenProvider.getUsernameFromToken(jwt);
+                // Blacklist kontrolü — revoke edilmiş token'lar reddedilir
+                String jti = jwtTokenProvider.getJtiFromToken(jwt);
+                if (tokenBlacklistService.isRevoked(jti)) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
 
+                String username = jwtTokenProvider.getUsernameFromToken(jwt);
                 UserDetails userDetails = customUserDetailsService.loadUserByUsername(username);
 
                 UsernamePasswordAuthenticationToken authentication =
@@ -51,7 +61,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         );
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception ex) {
