@@ -41,6 +41,13 @@ public class Contract {
     @Column(name = "counterparty_role", length = 50)
     private String counterpartyRole;
 
+    /**
+     * Madde açıklamaları — JSON string (List&lt;ClauseExplanationItem&gt;).
+     * Sözleşme analiz bağlamıyla oluşturulduğunda doldurulur; null olabilir.
+     */
+    @Column(name = "clause_explanations", columnDefinition = "TEXT")
+    private String clauseExplanations;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

@@ -6,6 +6,7 @@ import com.earzuhal.Service.PdfService;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -92,6 +93,18 @@ public class ContractController {
     public ResponseEntity<ContractResponse> reject(@PathVariable Long id) {
         ContractResponse contract = contractService.reject(id, getCurrentUsername());
         return ResponseEntity.ok(contract);
+    }
+
+    /**
+     * Sözleşmedeki her maddenin neden eklendiğini, hangi kanun maddesine
+     * dayandığını ve istatistiksel yaygınlığını açıklar.
+     * GET /api/contracts/{id}/explanation
+     */
+    @GetMapping("/{id}/explanation")
+    public ResponseEntity<ContractExplanationResponse> getExplanation(@PathVariable Long id) {
+        ContractExplanationResponse explanation =
+                contractService.getExplanation(id, getCurrentUsername());
+        return ResponseEntity.ok(explanation);
     }
 
     /** Sözleşmeyi PDF olarak indir */
