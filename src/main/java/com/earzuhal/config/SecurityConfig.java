@@ -77,9 +77,14 @@ public class SecurityConfig {
 
                         // Admin endpoints
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/disclaimer/**").permitAll()
 
                         // All other endpoints require authentication
                         .anyRequest().authenticated()
+
+                        
+
+
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
