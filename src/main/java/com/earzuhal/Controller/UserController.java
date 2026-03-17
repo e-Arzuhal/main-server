@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
@@ -22,6 +23,11 @@ public class UserController {
 
     public UserController(UserService userService) {
         this.userService = userService;
+    }
+
+    @GetMapping("/lookup")
+    public ResponseEntity<Map<String, Object>> lookupByTcKimlik(@RequestParam String tcKimlik) {
+        return ResponseEntity.ok(userService.lookupByTcKimlik(tcKimlik));
     }
 
     @GetMapping("/me")
