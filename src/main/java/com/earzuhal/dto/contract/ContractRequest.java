@@ -30,6 +30,9 @@ public class ContractRequest {
     @Size(max = 50, message = "Counterparty role must not exceed 50 characters")
     private String counterpartyRole;
 
+    @Size(min = 11, max = 11, message = "TC Kimlik No 11 haneli olmalıdır")
+    private String counterpartyTcKimlik;
+
     /**
      * Opsiyonel analiz bağlamı. Frontend analiz sonrasında sözleşme oluştururken
      * bu alanı doldurursa madde açıklamaları otomatik üretilir.

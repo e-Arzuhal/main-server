@@ -15,7 +15,8 @@ import java.time.OffsetDateTime;
 @Table(name = "users",
         uniqueConstraints = {
                 @UniqueConstraint(columnNames = "username"),
-                @UniqueConstraint(columnNames = "email")
+                @UniqueConstraint(columnNames = "email"),
+                @UniqueConstraint(columnNames = "tc_kimlik")
         })
 public class User {
 
@@ -46,6 +47,9 @@ public class User {
 
     @Column(name = "created_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime createdAt = OffsetDateTime.now();
+
+    @Column(name = "tc_kimlik", length = 11, unique = true)
+    private String tcKimlik;
 
     @Column(name = "updated_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt = OffsetDateTime.now();

@@ -21,6 +21,7 @@ public class ContractResponse {
     private String amount;
     private String counterpartyName;
     private String counterpartyRole;
+    private String counterpartyTcKimlik;
     private Long userId;
     private String ownerUsername;
     private OffsetDateTime createdAt;

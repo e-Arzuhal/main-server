@@ -25,6 +25,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Boolean existsByEmail(String email);
 
+    Optional<User> findByTcKimlik(String tcKimlik);
+
     @Query("SELECT s FROM User s ORDER BY s.id ASC")
     List<User> findAllOrderByUserId();
 }
