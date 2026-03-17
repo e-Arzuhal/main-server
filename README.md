@@ -2,39 +2,16 @@
 
 Main backend server for the e-Arzuhal platform.
 
-This Spring Boot application acts as the central orchestrator for the e-Arzuhal system.
-It exposes REST APIs for mobile and web clients, coordinates calls to external services
-(NLP, GraphRAG, statistics), manages contract and petition workflows, generates PDF documents,
-and handles identity verification for digital signatures.
-
----
-
-## System Role
-
-The Main Server is responsible for:
-
-- Receiving requests from Mobile and Web clients
-- Acting as a lightweight API gateway / orchestrator
-- Calling external services:
-  - NLP service (port 8001)
-  - GraphRAG / Knowledge Graph service (port 8000)
-  - Statistics service (port 8002)
-- Merging results from multiple services
-- Managing:
-  - Users
-  - Contracts (sözleşmeler) — full CRUD + PDF export
-  - Petitions / Dilekçeler — full CRUD + PDF export
-  - Approval and digital signature flows
-  - **Identity Verification** — NFC / MRZ / manual TC Kimlik doğrulama
-- Generating PDF documents from Thymeleaf HTML templates (openhtmltopdf)
-- Applying authentication and authorization (JWT / Spring Security)
+Bu Spring Boot uygulaması e-Arzuhal sisteminin merkezi orkestratörüdür.
+Mobil ve web istemcilerine REST API sunar; NLP, GraphRAG ve istatistik servislerine çağrı yapar;
+sözleşme/dilekçe iş akışlarını yönetir; PDF üretir ve kimlik doğrulama yapar.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
+| Katman | Teknoloji |
+|--------|-----------|
 | Language | Java 21 |
 | Framework | Spring Boot 4.0.2 |
 | Build | Maven |
@@ -44,88 +21,57 @@ The Main Server is responsible for:
 | PDF Generation | openhtmltopdf-pdfbox 1.0.10 |
 | Template Engine | Thymeleaf |
 | HTTP Client | Spring WebFlux WebClient |
-| Logging | SLF4J + Logback (built-in) |
+| API Docs | springdoc-openapi 3.0.0 (Spring Boot 4.x uyumlu) |
 
 ---
 
-## Main Dependencies
-
-```xml
-spring-boot-starter-web           <!-- REST API -->
-spring-boot-starter-webflux       <!-- WebClient for microservices -->
-spring-boot-starter-security      <!-- Authentication -->
-spring-boot-starter-data-jpa      <!-- Persistence -->
-spring-boot-starter-validation    <!-- Request validation -->
-spring-boot-starter-thymeleaf     <!-- HTML template engine -->
-jjwt-api / jjwt-impl / jjwt-jackson 0.12.6   <!-- JWT -->
-openhtmltopdf-pdfbox 1.0.10       <!-- HTML → PDF -->
-openhtmltopdf-slf4j 1.0.10        <!-- PDF library logging -->
-postgresql                        <!-- DB driver -->
-lombok                            <!-- Boilerplate reduction -->
-```
-
----
-
-## Project Structure
+## Proje Yapısı
 
 ```
 src/main/java/com/earzuhal/
 ├── config/
 │   ├── SecurityConfig.java
 │   ├── JwtConfig.java
-│   └── WebConfig.java
-├── security/
-│   ├── jwt/
-│   │   ├── JwtTokenProvider.java
-│   │   ├── JwtAuthenticationFilter.java
-│   │   └── JwtAuthenticationEntryPoint.java
-│   └── CustomUserDetailsService.java
+│   ├── WebConfig.java
+│   └── WebClientConfig.java
+├── security/jwt/
+│   ├── JwtTokenProvider.java
+│   ├── JwtAuthenticationFilter.java
+│   └── JwtAuthenticationEntryPoint.java
 ├── Controller/
 │   ├── AuthController.java          # /api/auth/**
 │   ├── ContractController.java      # /api/contracts/**
 │   ├── PetitionController.java      # /api/petitions/**
-│   ├── UserController.java          # /api/users/**
+│   ├── UserController.java          # /api/users/** + /api/users/lookup
 │   ├── AnalysisController.java      # /api/analysis/**
-│   └── VerificationController.java  # /api/verification/**
+│   ├── VerificationController.java  # /api/verification/**
+│   ├── DisclaimerController.java    # /api/disclaimer/**
+│   ├── ChatbotController.java       # /api/chatbot/**
+│   └── LandingController.java       # /api/landing/**
 ├── Service/
 │   ├── AuthService.java
-│   ├── UserService.java
-│   ├── ContractService.java
+│   ├── UserService.java             # lookupByTcKimlik dahil
+│   ├── ContractService.java         # TC Kimlik doğrulama + idempotency
 │   ├── PetitionService.java
-│   ├── PdfService.java              # HTML → PDF (Thymeleaf + openhtmltopdf)
+│   ├── PdfService.java
 │   ├── AnalysisService.java
 │   ├── NlpService.java
 │   ├── GraphRagService.java
-│   └── VerificationService.java     # TC Kimlik doğrulama (checksum + maskeleme)
+│   └── VerificationService.java
 ├── Repository/
-│   ├── UserRepository.java
+│   ├── UserRepository.java          # findByTcKimlik dahil
 │   ├── ContractRepository.java
-│   ├── PetitionRepository.java
-│   └── IdentityVerificationRepository.java
+│   └── ...
 ├── Model/
-│   ├── User.java
-│   ├── Contract.java
-│   ├── Petition.java
-│   └── IdentityVerification.java    # identity_verifications tablosu
-├── dto/
-│   ├── auth/
-│   ├── user/
-│   ├── contract/
-│   ├── petition/
-│   ├── analysis/
-│   └── verification/
-│       ├── VerificationRequest.java
-│       └── VerificationResponse.java
-├── exception/
-│   ├── GlobalExceptionHandler.java
-│   └── (custom exceptions)
-└── MainServerApp.java
+│   ├── User.java                    # tc_kimlik alanı eklendi
+│   ├── Contract.java                # counterparty_tc_kimlik alanı eklendi
+│   └── ...
+└── dto/
+    ├── contract/                    # ContractRequest/Response'da counterpartyTcKimlik
+    └── ...
 
 src/main/resources/
 ├── application.properties
-├── fonts/                           # Türkçe karakter desteği (opsiyonel, prod için)
-│   ├── NotoSerif-Regular.ttf
-│   └── NotoSerif-Bold.ttf
 └── templates/pdf/
     ├── contracts/
     │   ├── kira_sozlesmesi.html
@@ -135,248 +81,163 @@ src/main/resources/
     │   ├── is_sozlesmesi.html
     │   ├── vekaletname.html
     │   ├── taahhutname.html
-    │   └── genel_sozlesme.html      # fallback template
+    │   └── genel_sozlesme.html      # fallback
     └── petitions/
         └── dilekce.html
 ```
 
 ---
 
-## How to Run
+## Kurulum
 
-### Prerequisites
-
-- Java 21
-- PostgreSQL running locally
-- Maven 3.9+
-
----
-
-### 1. Configure Database
+### 1. Veritabanı
 
 ```sql
 CREATE DATABASE earzuhal_main_server;
 ```
 
----
+### 2. Ortam Değişkenleri
 
-### 2. Set Environment Variables
+`.env.example` → `.env` olarak kopyalayıp doldur:
 
-`.env.example` dosyasını kopyalayıp `.env` olarak kaydedin ve değerleri doldurun.
-
-| Variable | Zorunlu | Açıklama |
+| Değişken | Zorunlu | Açıklama |
 |----------|---------|----------|
 | `POSTGRES_DB_PASSWORD` | ✅ | PostgreSQL şifresi |
-| `JWT_SECRET` | ✅ | JWT imzalama anahtarı (min. 64 karakter). `openssl rand -base64 64` ile üret. |
-| `INTERNAL_API_KEY` | Prod'da ✅ | Python servislerine gönderilen dahili API anahtarı (`X-Internal-API-Key` header). `openssl rand -hex 32` ile üret. Python servislerin `.env` dosyasındaki `INTERNAL_API_KEY` ile aynı olmalı. |
-| `CORS_ALLOWED_ORIGINS` | Prod'da ✅ | Virgülle ayrılmış izinli frontend origin'leri. Varsayılan: `localhost:3000,...` |
+| `JWT_SECRET` | ✅ | Min. 64 karakter. `openssl rand -base64 64` |
+| `INTERNAL_API_KEY` | Prod ✅ | Python servislerle paylaşılan anahtar. `openssl rand -hex 32` |
+| `CORS_ALLOWED_ORIGINS` | Prod ✅ | Virgülle ayrılmış frontend origin'leri |
 | `NLP_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8001` |
 | `GRAPHRAG_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8000` |
 | `STATISTICS_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8002` |
 | `CHATBOT_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8003` |
 
-⚠️ **NEVER commit `.env` to version control!**
+⚠️ `.env` dosyasını asla commit etmeyin!
 
----
-
-### 3. Font Setup (Turkish Character Support in PDFs)
-
-PDF generation requires a font with Turkish character support (İ, ı, Ğ, ğ, Ş, ş).
-
-**Development (Windows):** Times New Roman is used automatically from `C:\Windows\Fonts\`.
-
-**Production (Linux/Docker):** Add Noto Serif to the classpath:
-
-1. Download from https://fonts.google.com/specimen/Noto+Serif
-2. Place `NotoSerif-Regular.ttf` and `NotoSerif-Bold.ttf` in:
-   ```
-   src/main/resources/fonts/
-   ```
-3. The fonts are picked up automatically by `PdfService`.
-
----
-
-### 4. Build and Run
+### 3. Build & Çalıştır
 
 ```bash
 cd main-server
-./mvnw clean install
 ./mvnw spring-boot:run
 ```
 
-Or build and run JAR:
-
-```bash
-./mvnw clean package
-java -jar target/main_server-0.0.1-SNAPSHOT.jar
-```
-
-Application runs on: `http://localhost:8080`
+Uygulama: `http://localhost:8080`
+Swagger UI: `http://localhost:8080/swagger-ui.html`
 
 ---
 
 ## API Endpoints
 
-### Public Endpoints (No Auth)
+### Public
 
 ```
-POST /api/auth/register   Register new user
-POST /api/auth/login      Login → returns JWT token
-POST /api/auth/logout     Revoke current token (server-side blacklist)
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
 ```
 
-### User Endpoints (JWT required)
+### Kullanıcı (JWT gerekli)
 
 ```
-GET  /api/users/me        Get current user profile
-PUT  /api/users/me        Update profile
+GET  /api/users/me
+PUT  /api/users/me
+GET  /api/users/lookup?tcKimlik=   → { "found": true, "displayName": "Ad Soyad" }
+                                     { "found": false }
 ```
 
-### Contract Endpoints (JWT required)
+### Sözleşme (JWT gerekli)
 
 ```
-POST   /api/contracts                   Create contract (status: DRAFT)
-GET    /api/contracts                   List current user's contracts
-GET    /api/contracts/{id}              Get contract by ID
-PUT    /api/contracts/{id}              Update contract
-DELETE /api/contracts/{id}             Delete contract
-GET    /api/contracts/{id}/pdf          Download contract as PDF
-POST   /api/contracts/{id}/finalize     Send for approval (DRAFT → PENDING)
-POST   /api/contracts/{id}/approve      Approve contract
-POST   /api/contracts/{id}/reject       Reject contract
-GET    /api/contracts/pending-approval  List pending approvals
-GET    /api/contracts/stats             Contract statistics
+POST   /api/contracts
+GET    /api/contracts
+GET    /api/contracts/{id}
+PUT    /api/contracts/{id}
+DELETE /api/contracts/{id}
+GET    /api/contracts/{id}/pdf
+POST   /api/contracts/{id}/finalize     DRAFT → PENDING
+POST   /api/contracts/{id}/approve      TC Kimlik doğrulama + idempotency
+POST   /api/contracts/{id}/reject       TC Kimlik doğrulama + idempotency
+GET    /api/contracts/pending-approval
+GET    /api/contracts/stats
+GET    /api/contracts/{id}/explanation
 ```
 
-### Petition / Dilekçe Endpoints (JWT required)
-
-```
-POST   /api/petitions                   Create petition (status: DRAFT)
-GET    /api/petitions                   List current user's petitions
-GET    /api/petitions/{id}              Get petition by ID
-PUT    /api/petitions/{id}              Update petition
-DELETE /api/petitions/{id}             Delete petition
-POST   /api/petitions/{id}/complete     Mark petition as COMPLETED
-GET    /api/petitions/{id}/pdf          Download petition as PDF
-```
-
-**Create Petition Request body:**
+**Sözleşme oluşturma gövdesi:**
 ```json
 {
-  "kurum": "T.C. İstanbul Valiliği",
-  "kurumAdresi": "İstanbul, Türkiye",
-  "yetkili": "Sayın Vali",
-  "konu": "İzin Talebi",
-  "govde": "Sayın Yetkili,\n\nBu dilekçe ile ..."
+  "title": "Kira Sözleşmesi",
+  "type": "kira_sozlesmesi",
+  "content": "...",
+  "amount": "15.000 TL",
+  "counterpartyName": "Ahmet Yılmaz",
+  "counterpartyRole": "Kiracı",
+  "counterpartyTcKimlik": "12345678901"
 }
 ```
 
-### Identity Verification Endpoints (JWT required)
+### Dilekçe (JWT gerekli)
 
 ```
-POST /api/verification/identity   TC Kimlik doğrulama (NFC / MRZ / MANUAL)
-GET  /api/verification/status     Giriş yapan kullanıcının doğrulama durumu
+POST   /api/petitions
+GET    /api/petitions
+GET    /api/petitions/{id}
+PUT    /api/petitions/{id}
+DELETE /api/petitions/{id}
+POST   /api/petitions/{id}/complete
+GET    /api/petitions/{id}/pdf
 ```
 
-**POST /api/verification/identity – Request body:**
-```json
-{
-  "tcNo": "12345678901",
-  "firstName": "Ali",
-  "lastName": "Yılmaz",
-  "dateOfBirth": "1990-05-15",
-  "method": "MANUAL",
-  "mrzData": null
-}
+### Kimlik Doğrulama (JWT gerekli)
+
+```
+POST /api/verification/identity   { tcNo, firstName, lastName, dateOfBirth, method }
+GET  /api/verification/status
 ```
 
 `method` değerleri: `"NFC"` | `"MRZ"` | `"MANUAL"`
 
-**Response (her iki endpoint):**
-```json
-{
-  "status": "VERIFIED",
-  "message": "Kimlik doğrulaması başarıyla tamamlandı.",
-  "tcNoMasked": "123******01",
-  "firstName": "Ali",
-  "lastName": "Yılmaz",
-  "verificationMethod": "MANUAL",
-  "verifiedAt": "2026-02-21T14:30:00Z",
-  "verified": true
-}
-```
-
-**TC Kimlik Numarası Doğrulama Algoritması (VerificationService.java):**
-```
-11 haneli, tamamı rakam; ilk hane ≠ 0
-d10 = (7*(d[0]+d[2]+d[4]+d[6]+d[8]) - (d[1]+d[3]+d[5]+d[7])) mod 10
-d11 = (d[0]+d[1]+...+d[9]) mod 10
-Maskeleme: "12345678901" → "123******01"
-Ham TC numarası veritabanına HİÇBİR ZAMAN kaydedilmez.
-```
-
-### Disclaimer Endpoints (JWT required)
+### Analiz (JWT gerekli)
 
 ```
-GET  /api/disclaimer/status   Kullanıcının geçerli yasal uyarı versiyonunu kabul edip etmediğini döner
-POST /api/disclaimer/accept   Yasal uyarıyı kabul et (body: {"platform": "WEB"|"MOBILE"})
+POST /api/analysis/analyze   NLP + GraphRAG pipeline
 ```
 
-> `POST /api/contracts/{id}/finalize` çağrılmadan önce disclaimer kabul edilmiş olmalıdır.
-
-### Analysis Endpoints (JWT required)
+### Disclaimer (JWT gerekli)
 
 ```
-POST /api/analysis/analyze   NLP + GraphRAG pipeline (sözleşme türü tespiti + eksik alan analizi)
+GET  /api/disclaimer/status
+POST /api/disclaimer/accept   { "platform": "WEB" | "MOBILE" }
 ```
 
-### Admin Endpoints (ADMIN role required)
+### Admin (ADMIN rolü gerekli)
 
 ```
-GET    /api/users        List all users
-GET    /api/users/{id}   Get user by ID
-PUT    /api/users/{id}   Update user
-DELETE /api/users/{id}   Delete user
+GET    /api/users
+GET    /api/users/{id}
+PUT    /api/users/{id}
+DELETE /api/users/{id}
 ```
 
 ---
 
-## Database Schema
+## Veritabanı Şeması
 
-Tables are auto-created/updated by Hibernate (`ddl-auto=update`).
+Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
 
 | Tablo | Açıklama |
 |-------|----------|
-| `users` | Kullanıcı hesapları |
-| `contracts` | Sözleşmeler (DRAFT / PENDING / APPROVED / REJECTED / COMPLETED) |
-| `petitions` | Dilekçeler (DRAFT / COMPLETED) |
-| `identity_verifications` | TC Kimlik doğrulama kayıtları — users ile OneToOne ilişki |
-| `disclaimer_acceptances` | Yasal uyarı kabul kayıtları (versiyon + platform + tarih) |
-| `revoked_tokens` | Server-side JWT blacklist — logout sonrası geçersiz tokenlar |
-
-**identity_verifications kolonları:**
-
-| Kolon | Tip | Açıklama |
-|-------|-----|----------|
-| `id` | BIGSERIAL | PK |
-| `user_id` | BIGINT (FK, UNIQUE) | users.id |
-| `tc_no_masked` | VARCHAR(20) | "123******01" formatında |
-| `first_name` | VARCHAR(100) | |
-| `last_name` | VARCHAR(100) | |
-| `date_of_birth` | DATE | |
-| `verification_method` | VARCHAR(20) | NFC / MRZ / MANUAL |
-| `status` | VARCHAR(20) | VERIFIED / FAILED / PENDING |
-| `verified_at` | TIMESTAMPTZ | |
-| `created_at` | TIMESTAMPTZ | |
+| `users` | `tc_kimlik VARCHAR(11) UNIQUE` dahil |
+| `contracts` | `counterparty_tc_kimlik VARCHAR(11)` dahil |
+| `petitions` | Dilekçeler |
+| `identity_verifications` | NFC/MRZ/Manuel doğrulama kayıtları |
+| `disclaimer_acceptances` | Yasal uyarı kabul kayıtları |
+| `revoked_tokens` | JWT blacklist |
 
 ---
 
-## Contract Type Mapping
+## Sözleşme Tipi Eşleşmesi
 
-PdfService resolves the correct template based on the contract `type` field:
-
-| Contract Type | Template |
-|---------------|----------|
+| Tür | Şablon |
+|-----|--------|
 | `kira_sozlesmesi` / `rental` | Kira Sözleşmesi |
 | `borc_sozlesmesi` / `other` | Borç Sözleşmesi |
 | `hizmet_sozlesmesi` / `service` | Hizmet Sözleşmesi |
@@ -384,89 +245,33 @@ PdfService resolves the correct template based on the contract `type` field:
 | `is_sozlesmesi` / `employment` | İş Sözleşmesi |
 | `vekaletname` | Vekaletname |
 | `taahhutname` | Taahhütname |
-| (any other) | Genel Sözleşme (fallback) |
+| (diğer) | Genel Sözleşme (fallback) |
 
 ---
 
-## External Services Integration
+## Güvenlik
 
-```properties
-services.nlp.base-url=${NLP_SERVICE_URL:http://localhost:8001}
-services.graphrag.base-url=${GRAPHRAG_SERVICE_URL:http://localhost:8000}
-services.statistics.base-url=${STATISTICS_SERVICE_URL:http://localhost:8002}
-```
-
-| Service | Status | Class |
-|---------|--------|-------|
-| NLP Server | ✅ Implemented | `NlpService.java` |
-| GraphRAG Server | ✅ Implemented | `GraphRagService.java` |
-| Statistics Server | 🔄 Planned | — |
+- **JWT** — 24 saatlik token, `jti` ile blacklist
+- **BCrypt** — Şifre hash (strength 10)
+- **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme)
+- **TC Kimlik** — Ham numara veritabanına kaydedilmez; `"123******01"` formatında maskelenir
+- **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli
+- **İdempotency** — Zaten sonuçlanmış sözleşmeye onay/red isteği `400 Bad Request` döner
+- **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz
+- **Disclaimer Kapısı** — Finalize için yasal uyarı kabul zorunlu
+- **Internal API Key** — Python servislere `X-Internal-API-Key` header
 
 ---
 
-## Logging
+## Sorun Giderme
 
-Logging is configured in `application.properties`:
-
-```properties
-logging.level.com.earzuhal=DEBUG
-logging.level.org.springframework.web=INFO
-logging.level.org.springframework.security=INFO
-logging.level.com.openhtmltopdf=WARN
-logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
-```
-
-- `GlobalExceptionHandler` — tüm unhandled exception'lar ERROR seviyesinde + full stack trace
-- `PdfService` — her PDF üretimi DEBUG, hata durumunda ERROR
-- `VerificationService` — başarılı doğrulama INFO seviyesinde loglanır
-
----
-
-## Security & Authentication
-
-- **Spring Security 6.x** — Full security framework
-- **JWT (JJWT 0.12.6)** — Stateless auth, 24-hour expiration, `jti` claim for revocation
-- **BCrypt** — Password hashing (strength 10)
-- **RBAC** — USER and ADMIN roles
-- **Input Validation** — Jakarta Validation on all request bodies
-- **TC No Masking** — Ham TC kimlik numarası veritabanına kaydedilmez
-- **IDOR Protection** — `ContractService` her işlemde sahiplik doğrulaması yapar (404 maskeleme)
-- **Self-Approval Prevention** — Sözleşme sahibi kendi sözleşmesini onaylayamaz
-- **Token Blacklist** — `POST /api/auth/logout` mevcut `jti`'yi `revoked_tokens` tablosuna ekler; her istekte kontrol edilir
-- **Disclaimer Gate** — Sözleşme finalize edilemez yasal uyarı kabul edilmeden
-- **Internal API Key** — Python servislere giden tüm çağrılara `X-Internal-API-Key` header eklenir
-
-### Authentication Flow
-
-1. `POST /api/auth/register` → JWT döner (`jti` içerir)
-2. `POST /api/auth/login` → JWT döner
-3. Tüm korumalı istekler: `Authorization: Bearer <token>`
-4. `POST /api/auth/logout` → JWT blacklist'e eklenir (diğer cihazların token'ları geçerliliğini korur)
-
----
-
-## Troubleshooting
-
-| Problem | Solution |
-|---------|---------|
-| `POSTGRES_DB_PASSWORD is not set` | Set the env variable before starting |
-| `Invalid JWT signature` | Token expired or wrong secret — login again |
-| `403 Forbidden` on admin routes | `UPDATE users SET role='ADMIN' WHERE username='...'` then login again |
-| PDF shows `?` boxes for Turkish chars | Add Noto Serif fonts to `src/main/resources/fonts/` |
-| PDF 500 error | Check server logs — full stack trace in GlobalExceptionHandler |
-| `Geçersiz TC Kimlik Numarası` | 11 haneli, algoritmayı geçen geçerli bir TC No kullanın |
-
----
-
-## Important Security Notes
-
-1. **JWT Secret**: Mutlaka değiştirin. `openssl rand -base64 64` ile üretin.
-2. **Database Password**: Env var ile set edin, asla hardcode etmeyin.
-3. **CORS**: Production'da `CORS_ALLOWED_ORIGINS` env var'ını gerçek frontend URL'leriyle set edin.
-4. **Internal API Key**: Production'da `INTERNAL_API_KEY` set edin; tüm Python servisleri de aynı değerle set edilmeli.
-5. **HTTPS**: Production'da her zaman HTTPS kullanın.
-6. **TC No**: Ham TC kimlik numarası veritabanında saklanmaz. Sadece `"123******01"` formatında maskelenmiş hali tutulur.
-7. **Token Revocation**: Güvenlik ihlali durumunda `revoked_tokens` tablosuna token `jti`'si eklenebilir. Süresi dolmuş kayıtlar her gece 03:00'da otomatik temizlenir.
+| Problem | Çözüm |
+|---------|-------|
+| `POSTGRES_DB_PASSWORD is not set` | `.env` dosyasını kontrol et |
+| `Invalid JWT signature` | Yeniden giriş yap |
+| `403 Forbidden` admin route | `UPDATE users SET role='ADMIN' WHERE username='...'` |
+| PDF'de `?` kutucukları | `src/main/resources/fonts/` klasörüne Noto Serif ekle |
+| `Geçersiz TC Kimlik Numarası` | 11 haneli, checksum algoritmasını geçen numara kullan |
 
 ---
 
