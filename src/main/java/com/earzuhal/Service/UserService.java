@@ -83,6 +83,23 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    public java.util.Map<String, Object> lookupByTcKimlik(String tcKimlik) {
+        return userRepository.findByTcKimlik(tcKimlik)
+                .map(u -> {
+                    java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                    result.put("found", true);
+                    result.put("displayName", u.getFirstName() != null && u.getLastName() != null
+                            ? u.getFirstName() + " " + u.getLastName()
+                            : u.getUsername());
+                    return result;
+                })
+                .orElseGet(() -> {
+                    java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
+                    result.put("found", false);
+                    return result;
+                });
+    }
+
     public boolean isUsernameExists(String username) {
         return userRepository.existsByUsername(username);
     }

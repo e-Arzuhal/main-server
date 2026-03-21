@@ -41,6 +41,9 @@ public class Contract {
     @Column(name = "counterparty_role", length = 50)
     private String counterpartyRole;
 
+    @Column(name = "counterparty_tc_kimlik", length = 11)
+    private String counterpartyTcKimlik;
+
     /**
      * Madde açıklamaları — JSON string (List&lt;ClauseExplanationItem&gt;).
      * Sözleşme analiz bağlamıyla oluşturulduğunda doldurulur; null olabilir.
