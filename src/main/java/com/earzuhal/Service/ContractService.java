@@ -3,6 +3,7 @@ package com.earzuhal.Service;
 import com.earzuhal.Model.Contract;
 import com.earzuhal.Model.User;
 import com.earzuhal.Repository.ContractRepository;
+import com.earzuhal.Repository.UserRepository;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
@@ -29,15 +30,17 @@ public class ContractService {
     private static final Logger log = LoggerFactory.getLogger(ContractService.class);
 
     private final ContractRepository contractRepository;
+    private final UserRepository userRepository;
     private final UserService userService;
     private final DisclaimerService disclaimerService;
     private final ExplanationService explanationService;
     private final ObjectMapper objectMapper;
 
-    public ContractService(ContractRepository contractRepository, UserService userService,
-                           DisclaimerService disclaimerService, ExplanationService explanationService,
-                           ObjectMapper objectMapper) {
+    public ContractService(ContractRepository contractRepository, UserRepository userRepository,
+                           UserService userService, DisclaimerService disclaimerService,
+                           ExplanationService explanationService, ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
+        this.userRepository = userRepository;
         this.userService = userService;
         this.disclaimerService = disclaimerService;
         this.explanationService = explanationService;
@@ -55,6 +58,7 @@ public class ContractService {
         contract.setAmount(request.getAmount());
         contract.setCounterpartyName(request.getCounterpartyName());
         contract.setCounterpartyRole(request.getCounterpartyRole());
+        contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
         contract.setStatus("DRAFT");
         contract.setUser(user);
         contract.setCreatedAt(OffsetDateTime.now());
@@ -139,6 +143,7 @@ public class ContractService {
         if (request.getAmount() != null) contract.setAmount(request.getAmount());
         if (request.getCounterpartyName() != null) contract.setCounterpartyName(request.getCounterpartyName());
         if (request.getCounterpartyRole() != null) contract.setCounterpartyRole(request.getCounterpartyRole());
+        if (request.getCounterpartyTcKimlik() != null) contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
         contract.setUpdatedAt(OffsetDateTime.now());
 
         Contract updated = contractRepository.save(contract);
@@ -193,9 +198,27 @@ public class ContractService {
     public ContractResponse approve(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+
+        // D5: idempotency check
+        if ("APPROVED".equals(contract.getStatus()) || "REJECTED".equals(contract.getStatus())) {
+            throw new BadRequestException("Sözleşme zaten sonuçlandırılmış");
+        }
+
+        // D4: self-approval prevention
         if (contract.getUser().getUsername().equals(username)) {
             throw new UnauthorizedException("Kendi sözleşmenizi onaylayamazsınız");
         }
+
+        // D4: TC Kimlik counterparty validation
+        if (contract.getCounterpartyTcKimlik() != null) {
+            User approver = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
+            if (approver.getTcKimlik() == null ||
+                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+                throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
+            }
+        }
+
         contract.setStatus("APPROVED");
         contract.setUpdatedAt(OffsetDateTime.now());
         return convertToResponse(contractRepository.save(contract));
@@ -205,9 +228,27 @@ public class ContractService {
     public ContractResponse reject(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+
+        // D5: idempotency check
+        if ("APPROVED".equals(contract.getStatus()) || "REJECTED".equals(contract.getStatus())) {
+            throw new BadRequestException("Sözleşme zaten sonuçlandırılmış");
+        }
+
+        // D4: self-rejection prevention
         if (contract.getUser().getUsername().equals(username)) {
             throw new UnauthorizedException("Kendi sözleşmenizi reddederek iptal edemezsiniz; bunun yerine sözleşmeyi silin");
         }
+
+        // D4: TC Kimlik counterparty validation
+        if (contract.getCounterpartyTcKimlik() != null) {
+            User approver = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
+            if (approver.getTcKimlik() == null ||
+                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+                throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
+            }
+        }
+
         contract.setStatus("REJECTED");
         contract.setUpdatedAt(OffsetDateTime.now());
         return convertToResponse(contractRepository.save(contract));
@@ -230,6 +271,7 @@ public class ContractService {
                 .amount(contract.getAmount())
                 .counterpartyName(contract.getCounterpartyName())
                 .counterpartyRole(contract.getCounterpartyRole())
+                .counterpartyTcKimlik(contract.getCounterpartyTcKimlik())
                 .userId(contract.getUser().getId())
                 .ownerUsername(contract.getUser().getUsername())
                 .createdAt(contract.getCreatedAt())
