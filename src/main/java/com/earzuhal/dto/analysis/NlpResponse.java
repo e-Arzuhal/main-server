@@ -11,55 +11,18 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class NlpResponse {
 
-    private boolean success;
-
     @JsonProperty("contract_type")
     private String contractType;
 
-    private double confidence;
+    @JsonProperty("contract_type_confidence")
+    private double contractTypeConfidence;
 
-    private List<EntityItem> entities;
+    @JsonProperty("extracted_entities")
+    private Map<String, List<String>> extractedEntities;
 
-    @JsonProperty("extracted_fields")
-    private ExtractedFields extractedFields;
+    @JsonProperty("raw_text_length")
+    private int rawTextLength;
 
-    private List<String> suggestions;
-
-    @JsonProperty("raw_text")
-    private String rawText;
-
-    @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class EntityItem {
-        private String text;
-        private String label;
-        private int start;
-        private int end;
-        @JsonProperty("mapped_field")
-        private String mappedField;
-    }
-
-    @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ExtractedFields {
-        private List<String> taraflar;
-        private String tutar;
-        private String tarih;
-        private String lokasyon;
-        private String kurum;
-    }
-
-    /**
-     * NLP entity'lerini GraphRAG formatına dönüştürür.
-     * GraphRAG beklediği format: {"PERSON": [...], "MONEY": [...], ...}
-     */
-    public Map<String, List<String>> toGraphRagEntities() {
-        var map = new java.util.HashMap<String, List<String>>();
-        if (entities == null) return map;
-
-        for (EntityItem e : entities) {
-            map.computeIfAbsent(e.getLabel(), k -> new java.util.ArrayList<>()).add(e.getText());
-        }
-        return map;
-    }
+    @JsonProperty("processing_time_ms")
+    private int processingTimeMs;
 }

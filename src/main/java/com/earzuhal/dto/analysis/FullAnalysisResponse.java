@@ -24,4 +24,7 @@ public class FullAnalysisResponse {
 
     @JsonProperty("completeness_score")
     private Double completenessScore;
+
+    @JsonProperty("compliance_score")
+    private Double complianceScore;
 }
