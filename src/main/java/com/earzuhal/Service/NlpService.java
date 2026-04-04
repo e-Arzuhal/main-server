@@ -22,14 +22,14 @@ public class NlpService {
 
     /**
      * Metni NLP server'a gönderip analiz sonucunu döner.
-     * POST /api/nlp/analyze  { "text": "..." }
+     * POST /api/v1/extract  { "text": "..." }
      */
     public NlpResponse analyze(String text) {
         log.info("NLP analiz isteği gönderiliyor, metin uzunluğu: {}", text.length());
 
         try {
             return webClient.post()
-                    .uri("/api/nlp/analyze")
+                    .uri("/api/v1/extract")
                     .bodyValue(Map.of("text", text))
                     .retrieve()
                     .bodyToMono(NlpResponse.class)

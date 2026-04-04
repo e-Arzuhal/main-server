@@ -55,18 +55,12 @@ public class StatisticsService {
             return List.of();
         }
 
-        List<Map<String, Object>> matchedFields = graphRagResult.getAnalysis().getMatchedFields();
+        List<String> matchedFields = graphRagResult.getAnalysis().getMatchedFields();
         if (matchedFields == null) {
             return List.of();
         }
 
         return matchedFields.stream()
-                .map(field -> {
-                    // GraphRAG "field_name" veya "name" key'i kullanıyor
-                    Object name = field.get("field_name");
-                    if (name == null) name = field.get("name");
-                    return name != null ? name.toString() : null;
-                })
                 .filter(name -> name != null && !name.isBlank())
                 .collect(Collectors.toList());
     }
