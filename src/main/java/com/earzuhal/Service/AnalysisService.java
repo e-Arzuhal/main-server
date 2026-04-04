@@ -5,9 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-
 @Service
 public class AnalysisService {
 
@@ -24,37 +21,35 @@ public class AnalysisService {
 
     /**
      * Tam analiz akışı:
-     * 1. Metin -> NLP Server (sözleşme tipi + entity extraction)
-     * 2. NLP sonucu -> GraphRAG Server (eksik alan analizi + öneriler)
-     * 3. Birleştirilmiş sonuç döner
+     * 1. Metin -> NLP Server (POST /api/v1/extract) -> contract_type + extracted_entities
+     * 2. NLP sonucu -> GraphRAG Server (POST /api/v1/analyze/input) -> gap analysis + legal analysis
+     * 3. İstatistik kaydı (fire-and-forget)
+     * 4. Birleştirilmiş sonuç döner
      */
     public FullAnalysisResponse analyzeText(String text) {
         // Adım 1: NLP analizi
         log.info("Adım 1: NLP analizi başlıyor");
         NlpResponse nlpResult = nlpService.analyze(text);
 
-        if (!nlpResult.isSuccess()) {
-            throw new RuntimeException("NLP analizi başarısız oldu.");
-        }
-
         String turkishType = nlpResult.getContractType();
         String englishType = ContractTypeMapping.toEnglish(turkishType);
 
-        log.info("NLP sonucu: tip={}, güven={}", turkishType, nlpResult.getConfidence());
+        log.info("NLP sonucu: tip={}, güven={}", turkishType, nlpResult.getContractTypeConfidence());
 
         // Adım 2: GraphRAG analizi
         log.info("Adım 2: GraphRAG analizi başlıyor");
-        Map<String, List<String>> graphRagEntities = nlpResult.toGraphRagEntities();
 
         GraphRagResponse graphRagResult = null;
         Double completenessScore = null;
+        Double complianceScore = null;
 
         try {
-            graphRagResult = graphRagService.analyze(turkishType, graphRagEntities);
+            graphRagResult = graphRagService.analyze(turkishType, nlpResult.getExtractedEntities());
             if (graphRagResult.getAnalysis() != null) {
                 completenessScore = graphRagResult.getAnalysis().getCompletenessScore();
+                complianceScore = graphRagResult.getAnalysis().getComplianceScore();
             }
-            log.info("GraphRAG sonucu: tamamlanma={}%", completenessScore);
+            log.info("GraphRAG sonucu: tamamlanma={}%, uyumluluk={}%", completenessScore, complianceScore);
         } catch (Exception e) {
             log.warn("GraphRAG servisi erişilemedi, sadece NLP sonucu ile devam ediliyor: {}", e.getMessage());
         }
@@ -66,10 +61,11 @@ public class AnalysisService {
         return FullAnalysisResponse.builder()
                 .contractType(englishType)
                 .contractTypeDisplay(turkishType)
-                .confidence(nlpResult.getConfidence())
+                .confidence(nlpResult.getContractTypeConfidence())
                 .nlpResult(nlpResult)
                 .graphRagResult(graphRagResult)
                 .completenessScore(completenessScore)
+                .complianceScore(complianceScore)
                 .build();
     }
 }
