@@ -1,6 +1,7 @@
 package com.earzuhal.Service;
 
 import com.earzuhal.dto.analysis.NlpResponse;
+import com.earzuhal.dto.chatbot.ChatIntentResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,4 +43,38 @@ public class NlpService {
             throw new RuntimeException("NLP servise bağlanılamadı. Servisin çalıştığından emin olun.", e);
         }
     }
+
+    /**
+     * Chatbot mesajının niyetini sınıflandırır ve PII maskeleme yapar.
+     * POST /api/v1/chat-intent { "message": "..." }
+     */
+    public ChatIntentResponse classifyIntent(String message) {
+        log.info("Chat intent sınıflandırma isteği gönderiliyor");
+
+        try {
+            return webClient.post()
+                    .uri("/api/v1/chat-intent")
+                    .bodyValue(Map.of("message", message))
+                    .retrieve()
+                    .bodyToMono(ChatIntentResponse.class)
+                    .block();
+        } catch (WebClientResponseException e) {
+            log.warn("NLP chat-intent hatası: {} — fallback GENERAL_HELP", e.getStatusCode());
+            return fallbackIntent(message);
+        } catch (Exception e) {
+            log.warn("NLP servise bağlanılamadı (chat-intent), fallback kullanılıyor: {}", e.getMessage());
+            return fallbackIntent(message);
+        }
+    }
+
+    /** NLP servisi erişilemezse GENERAL_HELP döner */
+    private ChatIntentResponse fallbackIntent(String message) {
+        ChatIntentResponse fallback = new ChatIntentResponse();
+        fallback.setIntent("GENERAL_HELP");
+        fallback.setConfidence(0.0);
+        fallback.setSanitizedMessage(message);
+        fallback.setDetectedEntities(Map.of());
+        return fallback;
+    }
 }
+

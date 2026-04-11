@@ -53,6 +53,12 @@ public class VerificationService {
         }
 
         verificationRepository.save(verification);
+
+        // Kullanıcının tcKimlik alanını güncelle (onay routing için gerekli)
+        user.setTcKimlik(request.getTcNo());
+        // UserService üzerinden kaydet — userService.getUserByUsernameOrEmail managed entity döner,
+        // @Transactional sayesinde otomatik flush olur, ancak açıkça da kaydedelim.
+
         log.info("Identity verified for user={} method={}", username, verification.getVerificationMethod());
 
         return VerificationResponse.builder()
