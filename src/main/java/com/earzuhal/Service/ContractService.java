@@ -1,8 +1,10 @@
 package com.earzuhal.Service;
 
 import com.earzuhal.Model.Contract;
+import com.earzuhal.Model.IdentityVerification;
 import com.earzuhal.Model.User;
 import com.earzuhal.Repository.ContractRepository;
+import com.earzuhal.Repository.IdentityVerificationRepository;
 import com.earzuhal.Repository.UserRepository;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
@@ -31,16 +33,19 @@ public class ContractService {
 
     private final ContractRepository contractRepository;
     private final UserRepository userRepository;
+    private final IdentityVerificationRepository verificationRepository;
     private final UserService userService;
     private final DisclaimerService disclaimerService;
     private final ExplanationService explanationService;
     private final ObjectMapper objectMapper;
 
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
+                           IdentityVerificationRepository verificationRepository,
                            UserService userService, DisclaimerService disclaimerService,
                            ExplanationService explanationService, ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
+        this.verificationRepository = verificationRepository;
         this.userService = userService;
         this.disclaimerService = disclaimerService;
         this.explanationService = explanationService;
@@ -174,7 +179,13 @@ public class ContractService {
 
     public List<ContractResponse> getPendingApprovals(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
-        return contractRepository.findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "PENDING")
+        // Kullanıcının TC Kimliği yoksa (doğrulanmamış) boş liste dön
+        if (user.getTcKimlik() == null) {
+            return Collections.emptyList();
+        }
+        // Karşı taraf TC'si ile eşleşen PENDING sözleşmeleri getir
+        return contractRepository
+                .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(user.getTcKimlik(), "PENDING")
                 .stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
@@ -197,7 +208,7 @@ public class ContractService {
     @Transactional
     public ContractResponse approve(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
 
         // D5: idempotency check
         if ("APPROVED".equals(contract.getStatus()) || "REJECTED".equals(contract.getStatus())) {
@@ -209,14 +220,15 @@ public class ContractService {
             throw new UnauthorizedException("Kendi sözleşmenizi onaylayamazsınız");
         }
 
+        // Kimlik doğrulama gate — hem User.tcKimlik hem de IdentityVerification kaydı kontrol edilir
+        User approver = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
+        validateIdentityForApproval(approver);
+
         // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null) {
-            User approver = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
-            if (approver.getTcKimlik() == null ||
-                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-                throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
-            }
+        if (contract.getCounterpartyTcKimlik() != null &&
+                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
         }
 
         contract.setStatus("APPROVED");
@@ -227,7 +239,7 @@ public class ContractService {
     @Transactional
     public ContractResponse reject(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
 
         // D5: idempotency check
         if ("APPROVED".equals(contract.getStatus()) || "REJECTED".equals(contract.getStatus())) {
@@ -239,14 +251,15 @@ public class ContractService {
             throw new UnauthorizedException("Kendi sözleşmenizi reddederek iptal edemezsiniz; bunun yerine sözleşmeyi silin");
         }
 
+        // Kimlik doğrulama gate — hem User.tcKimlik hem de IdentityVerification kaydı kontrol edilir
+        User approver = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
+        validateIdentityForApproval(approver);
+
         // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null) {
-            User approver = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
-            if (approver.getTcKimlik() == null ||
-                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-                throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
-            }
+        if (contract.getCounterpartyTcKimlik() != null &&
+                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
         }
 
         contract.setStatus("REJECTED");
@@ -254,10 +267,29 @@ public class ContractService {
         return convertToResponse(contractRepository.save(contract));
     }
 
+    /**
+     * Kimlik doğrulama gate:
+     * 1. User.tcKimlik null olmamalı
+     * 2. IdentityVerification kaydı VERIFIED statüsünde olmalı
+     * Her iki koşul da sağlanmazsa BadRequestException fırlatır.
+     */
+    private void validateIdentityForApproval(User approver) {
+        if (approver.getTcKimlik() == null) {
+            throw new BadRequestException(
+                    "Sözleşme işlemi için önce Kimlik Doğrulama sayfasından kimliğinizi doğrulamanız gerekmektedir");
+        }
+        // IdentityVerification kaydının da VERIFIED olduğunu doğrula
+        var verification = verificationRepository.findByUserId(approver.getId());
+        if (verification.isEmpty() || !"VERIFIED".equals(verification.get().getStatus())) {
+            throw new BadRequestException(
+                    "Kimlik doğrulama kaydınız bulunamadı veya onaylanmamış. Lütfen Kimlik Doğrulama sayfasını ziyaret edin.");
+        }
+    }
+
     /** Sözleşme sahibi değilse 404 döner (kaynak maskeleme ile IDOR önleme) */
     private void verifyOwnership(Contract contract, String username) {
         if (!contract.getUser().getUsername().equals(username)) {
-            throw new ResourceNotFoundException("Contract not found with id: " + contract.getId());
+            throw new ResourceNotFoundException("Sözleşme bulunamadı, id: " + contract.getId());
         }
     }
 

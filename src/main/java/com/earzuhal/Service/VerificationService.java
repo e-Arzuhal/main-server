@@ -34,7 +34,16 @@ public class VerificationService {
             throw new BadRequestException("Geçersiz TC Kimlik Numarası. Lütfen 11 haneli numaranızı kontrol edin.");
         }
 
+        // TODO: Prodüksiyon için NVI (Nüfus ve Vatandaşlık İşleri) API entegrasyonu gereklidir.
+        // Şu an sadece algoritma doğrulaması yapılmaktadır. Sahte TC ile doğrulama riski vardır.
+        // NVI API veya e-Devlet doğrulama servisi entegre edildikten sonra bu uyarı kaldırılmalıdır.
+
         User user = userService.getUserByUsernameOrEmail(username);
+
+        // Güvenlik: tcKimlik bir kez doğrulandıktan sonra değiştirilemez
+        if (user.getTcKimlik() != null) {
+            throw new BadRequestException("Kimlik doğrulaması zaten yapılmış. TC Kimlik numarası değiştirilemez.");
+        }
 
         // Varsa mevcut kaydı güncelle, yoksa yeni oluştur
         Optional<IdentityVerification> existing = verificationRepository.findByUserId(user.getId());
@@ -53,6 +62,10 @@ public class VerificationService {
         }
 
         verificationRepository.save(verification);
+
+        // Kullanıcının tcKimlik alanını güncelle (onay routing için gerekli)
+        user.setTcKimlik(request.getTcNo());
+
         log.info("Identity verified for user={} method={}", username, verification.getVerificationMethod());
 
         return VerificationResponse.builder()
