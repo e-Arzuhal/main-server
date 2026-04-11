@@ -174,7 +174,13 @@ public class ContractService {
 
     public List<ContractResponse> getPendingApprovals(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
-        return contractRepository.findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "PENDING")
+        // Kullanıcının TC Kimliği yoksa (doğrulanmamış) boş liste dön
+        if (user.getTcKimlik() == null) {
+            return Collections.emptyList();
+        }
+        // Karşı taraf TC'si ile eşleşen PENDING sözleşmeleri getir
+        return contractRepository
+                .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(user.getTcKimlik(), "PENDING")
                 .stream()
                 .map(this::convertToResponse)
                 .collect(Collectors.toList());
@@ -209,14 +215,18 @@ public class ContractService {
             throw new UnauthorizedException("Kendi sözleşmenizi onaylayamazsınız");
         }
 
+        // Kimlik doğrulama gate — onaylamak için doğrulanmış olmalı
+        User approver = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
+        if (approver.getTcKimlik() == null) {
+            throw new BadRequestException(
+                    "Sözleşme onaylamak için önce Kimlik Doğrulama sayfasından kimliğinizi doğrulamanız gerekmektedir");
+        }
+
         // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null) {
-            User approver = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
-            if (approver.getTcKimlik() == null ||
-                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-                throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
-            }
+        if (contract.getCounterpartyTcKimlik() != null &&
+                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
         }
 
         contract.setStatus("APPROVED");
@@ -239,14 +249,18 @@ public class ContractService {
             throw new UnauthorizedException("Kendi sözleşmenizi reddederek iptal edemezsiniz; bunun yerine sözleşmeyi silin");
         }
 
+        // Kimlik doğrulama gate — reddetmek için doğrulanmış olmalı
+        User approver = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
+        if (approver.getTcKimlik() == null) {
+            throw new BadRequestException(
+                    "Sözleşme reddetmek için önce Kimlik Doğrulama sayfasından kimliğinizi doğrulamanız gerekmektedir");
+        }
+
         // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null) {
-            User approver = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found: " + username));
-            if (approver.getTcKimlik() == null ||
-                    !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-                throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
-            }
+        if (contract.getCounterpartyTcKimlik() != null &&
+                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
         }
 
         contract.setStatus("REJECTED");
