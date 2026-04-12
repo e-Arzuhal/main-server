@@ -94,22 +94,18 @@ public class PdfService {
      * İndirme: https://fonts.google.com/specimen/Noto+Serif
      */
     private void registerFonts(PdfRendererBuilder builder) {
-        // 1. Classpath fontları (üretim)
+        // 1. Classpath fontları — Noto Serif (Türkçe karakter desteği garantili)
         registerClasspathFont(builder, "/fonts/NotoSerif-Regular.ttf",
                 "Noto Serif", 400, BaseRendererBuilder.FontStyle.NORMAL);
         registerClasspathFont(builder, "/fonts/NotoSerif-Bold.ttf",
                 "Noto Serif", 700, BaseRendererBuilder.FontStyle.NORMAL);
 
-        // 2. Windows sistem fontları (geliştirme ortamı)
+        // 2. Windows sistem fontları — yedek (geliştirme ortamı)
         String winFonts = "C:\\Windows\\Fonts\\";
         registerFileFont(builder, winFonts + "times.ttf",
                 "Times New Roman", 400, BaseRendererBuilder.FontStyle.NORMAL);
         registerFileFont(builder, winFonts + "timesbd.ttf",
                 "Times New Roman", 700, BaseRendererBuilder.FontStyle.NORMAL);
-        registerFileFont(builder, winFonts + "timesi.ttf",
-                "Times New Roman", 400, BaseRendererBuilder.FontStyle.ITALIC);
-        registerFileFont(builder, winFonts + "timesbi.ttf",
-                "Times New Roman", 700, BaseRendererBuilder.FontStyle.ITALIC);
     }
 
     private void registerFileFont(PdfRendererBuilder builder, String path,
@@ -137,14 +133,14 @@ public class PdfService {
     private String resolveContractTemplate(String type) {
         if (type == null) return "pdf/contracts/genel_sozlesme";
         return switch (type.toLowerCase()) {
-            case "kira_sozlesmesi", "rental"      -> "pdf/contracts/kira_sozlesmesi";
-            case "borc_sozlesmesi", "other"       -> "pdf/contracts/borc_sozlesmesi";
-            case "hizmet_sozlesmesi", "service"   -> "pdf/contracts/hizmet_sozlesmesi";
-            case "satis_sozlesmesi", "sales"      -> "pdf/contracts/satis_sozlesmesi";
-            case "is_sozlesmesi", "employment"    -> "pdf/contracts/is_sozlesmesi";
-            case "vekaletname"                    -> "pdf/contracts/vekaletname";
-            case "taahhutname"                    -> "pdf/contracts/taahhutname";
-            default                               -> "pdf/contracts/genel_sozlesme";
+            case "kira_sozlesmesi", "rental"                -> "pdf/contracts/kira_sozlesmesi";
+            case "borc_sozlesmesi", "loan"                  -> "pdf/contracts/borc_sozlesmesi";
+            case "hizmet_sozlesmesi", "service"             -> "pdf/contracts/hizmet_sozlesmesi";
+            case "satis_sozlesmesi", "sales"                -> "pdf/contracts/satis_sozlesmesi";
+            case "is_sozlesmesi", "employment"              -> "pdf/contracts/is_sozlesmesi";
+            case "vekaletname", "power_of_attorney"         -> "pdf/contracts/vekaletname";
+            case "taahhutname", "commitment"                -> "pdf/contracts/taahhutname";
+            default                                         -> "pdf/contracts/genel_sozlesme";
         };
     }
 
