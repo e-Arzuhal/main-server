@@ -42,24 +42,28 @@ public class PetitionService {
         return toResponse(petitionRepository.save(petition));
     }
 
+    @Transactional(readOnly = true)
     public List<PetitionResponse> getAllByUser(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
         return petitionRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    public PetitionResponse getById(Long id) {
-        return toResponse(findById(id));
+    @Transactional(readOnly = true)
+    public PetitionResponse getById(Long id, String username) {
+        Petition petition = findByIdAndVerifyOwnership(id, username);
+        return toResponse(petition);
     }
 
     /** PDF için tam entity döndürür (user lazy-loaded olduğu için) */
-    public Petition getEntityById(Long id) {
-        return findById(id);
+    @Transactional(readOnly = true)
+    public Petition getEntityById(Long id, String username) {
+        return findByIdAndVerifyOwnership(id, username);
     }
 
     @Transactional
-    public PetitionResponse update(Long id, PetitionRequest request) {
-        Petition petition = findById(id);
+    public PetitionResponse update(Long id, PetitionRequest request, String username) {
+        Petition petition = findByIdAndVerifyOwnership(id, username);
 
         if (request.getKurum() != null)       petition.setKurum(request.getKurum());
         if (request.getKurumAdresi() != null)  petition.setKurumAdresi(request.getKurumAdresi());
@@ -72,21 +76,27 @@ public class PetitionService {
     }
 
     @Transactional
-    public void delete(Long id) {
-        petitionRepository.delete(findById(id));
+    public void delete(Long id, String username) {
+        Petition petition = findByIdAndVerifyOwnership(id, username);
+        petitionRepository.delete(petition);
     }
 
     @Transactional
-    public PetitionResponse complete(Long id) {
-        Petition petition = findById(id);
+    public PetitionResponse complete(Long id, String username) {
+        Petition petition = findByIdAndVerifyOwnership(id, username);
         petition.setStatus("COMPLETED");
         petition.setUpdatedAt(OffsetDateTime.now());
         return toResponse(petitionRepository.save(petition));
     }
 
-    private Petition findById(Long id) {
-        return petitionRepository.findById(id)
+    private Petition findByIdAndVerifyOwnership(Long id, String username) {
+        Petition petition = petitionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Dilekçe bulunamadı, id: " + id));
+        User user = userService.getUserByUsernameOrEmail(username);
+        if (!petition.getUser().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("Dilekçe bulunamadı, id: " + id);
+        }
+        return petition;
     }
 
     private PetitionResponse toResponse(Petition p) {
