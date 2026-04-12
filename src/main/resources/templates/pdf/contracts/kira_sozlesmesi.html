@@ -4,7 +4,7 @@
     <meta charset="UTF-8"/>
     <style>
         @page { size: A4; margin: 2.5cm 2cm 2.5cm 2cm; }
-        body { font-family: 'Times New Roman', 'Noto Serif', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
+        body { font-family: 'Noto Serif', 'Times New Roman', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
         .doc-header { text-align: center; border-bottom: 2px solid #1a1a5e; padding-bottom: 12px; margin-bottom: 20px; }
         .brand { font-size: 9pt; color: #1a1a5e; letter-spacing: 2px; font-weight: bold; }
         .doc-title { font-size: 16pt; font-weight: bold; color: #1a1a5e; margin: 6px 0 4px 0; letter-spacing: 1px; }
@@ -28,12 +28,9 @@
         .status-draft { background: #f0a500; }
         .status-approved { background: #2d8a4e; }
         .status-completed { background: #1a6ea8; }
-        .watermark-draft { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(200,200,200,0.18); font-weight: bold; z-index: -1; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div th:if="${contract.status == 'DRAFT'}" class="watermark-draft">TASLAK</div>
-
     <div class="doc-header">
         <div class="brand">e-ARZUHAL — DİJİTAL HUKUK SİSTEMİ</div>
         <div class="doc-title">KİRA SÖZLEŞMESİ</div>

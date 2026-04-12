@@ -4,7 +4,7 @@
     <meta charset="UTF-8"/>
     <style>
         @page { size: A4; margin: 2.5cm 2.5cm 2.5cm 2.5cm; }
-        body { font-family: 'Times New Roman', 'Noto Serif', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.7; margin: 0; padding: 0; }
+        body { font-family: 'Noto Serif', 'Times New Roman', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.7; margin: 0; padding: 0; }
         .doc-header-brand { text-align: right; font-size: 8pt; color: #999; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 20px; }
         .addressee-block { margin-bottom: 30px; }
         .addressee-block .kurum { font-size: 12pt; font-weight: bold; color: #1a1a5e; }
@@ -21,12 +21,10 @@
         .petitioner-info { font-size: 10pt; color: #555; margin-top: 2px; }
         .petition-date { font-size: 10pt; color: #555; margin-top: 4px; }
         .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #bbb; border-top: 1px solid #eee; padding-top: 5px; }
-        .watermark-draft { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(200,200,200,0.18); font-weight: bold; z-index: -1; }
         .ref-line { font-size: 8.5pt; color: #aaa; text-align: right; margin-bottom: 4px; }
     </style>
 </head>
 <body>
-    <div th:if="${petition.status == 'DRAFT'}" class="watermark-draft">TASLAK</div>
 
     <div class="doc-header-brand">
         e-Arzuhal Dijital Hukuk Sistemi — <span th:text="${petitionId}">EAD-000001</span>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8"/>
     <style>
         @page { size: A4; margin: 2.5cm 2cm 2.5cm 2cm; }
-        body { font-family: 'Times New Roman', 'Noto Serif', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
+        body { font-family: 'Noto Serif', 'Times New Roman', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
         .doc-header { text-align: center; border-bottom: 2px solid #1a1a5e; padding-bottom: 12px; margin-bottom: 20px; }
         .brand { font-size: 9pt; color: #1a1a5e; letter-spacing: 2px; font-weight: bold; }
         .doc-title { font-size: 16pt; font-weight: bold; color: #1a1a5e; margin: 6px 0 4px 0; letter-spacing: 1px; }
@@ -24,11 +24,10 @@
         .sig-name { font-size: 10pt; margin-top: 4px; }
         .sig-date { font-size: 9pt; color: #555; margin-top: 2px; }
         .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #999; border-top: 1px solid #ddd; padding-top: 6px; }
-        .watermark-draft { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); font-size: 72pt; color: rgba(200,200,200,0.18); font-weight: bold; z-index: -1; }
+
     </style>
 </head>
 <body>
-    <div th:if="${contract.status == 'DRAFT'}" class="watermark-draft">TASLAK</div>
 
     <div class="doc-header">
         <div class="brand">e-ARZUHAL — DİJİTAL HUKUK SİSTEMİ</div>
