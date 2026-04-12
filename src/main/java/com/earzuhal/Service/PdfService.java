@@ -99,6 +99,10 @@ public class PdfService {
                 "Noto Serif", 400, BaseRendererBuilder.FontStyle.NORMAL);
         registerClasspathFont(builder, "/fonts/NotoSerif-Bold.ttf",
                 "Noto Serif", 700, BaseRendererBuilder.FontStyle.NORMAL);
+        registerClasspathFont(builder, "/fonts/NotoSerif-Italic.ttf",
+            "Noto Serif", 400, BaseRendererBuilder.FontStyle.ITALIC);
+        registerClasspathFont(builder, "/fonts/NotoSerif-BoldItalic.ttf",
+            "Noto Serif", 700, BaseRendererBuilder.FontStyle.ITALIC);
 
         // 2. Windows sistem fontları — yedek (geliştirme ortamı)
         String winFonts = "C:\\Windows\\Fonts\\";
@@ -106,6 +110,10 @@ public class PdfService {
                 "Times New Roman", 400, BaseRendererBuilder.FontStyle.NORMAL);
         registerFileFont(builder, winFonts + "timesbd.ttf",
                 "Times New Roman", 700, BaseRendererBuilder.FontStyle.NORMAL);
+        registerFileFont(builder, winFonts + "timesi.ttf",
+            "Times New Roman", 400, BaseRendererBuilder.FontStyle.ITALIC);
+        registerFileFont(builder, winFonts + "timesbi.ttf",
+            "Times New Roman", 700, BaseRendererBuilder.FontStyle.ITALIC);
     }
 
     private void registerFileFont(PdfRendererBuilder builder, String path,
@@ -140,6 +148,7 @@ public class PdfService {
             case "is_sozlesmesi", "employment"              -> "pdf/contracts/is_sozlesmesi";
             case "vekaletname", "power_of_attorney"         -> "pdf/contracts/vekaletname";
             case "taahhutname", "commitment"                -> "pdf/contracts/taahhutname";
+            case "other", "diger", "genel_sozlesme", "general" -> "pdf/contracts/genel_sozlesme";
             default                                         -> "pdf/contracts/genel_sozlesme";
         };
     }

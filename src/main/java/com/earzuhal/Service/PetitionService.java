@@ -42,18 +42,21 @@ public class PetitionService {
         return toResponse(petitionRepository.save(petition));
     }
 
+    @Transactional(readOnly = true)
     public List<PetitionResponse> getAllByUser(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
         return petitionRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public PetitionResponse getById(Long id, String username) {
         Petition petition = findByIdAndVerifyOwnership(id, username);
         return toResponse(petition);
     }
 
     /** PDF için tam entity döndürür (user lazy-loaded olduğu için) */
+    @Transactional(readOnly = true)
     public Petition getEntityById(Long id, String username) {
         return findByIdAndVerifyOwnership(id, username);
     }
