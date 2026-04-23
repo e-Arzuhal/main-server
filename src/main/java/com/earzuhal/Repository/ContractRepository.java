@@ -19,6 +19,5 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
 
     long countByUserId(Long userId);
 
-    /** Karşı tarafın TC Kimlik numarasına göre sözleşmeleri bul (onay routing) */
     List<Contract> findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(String counterpartyTcKimlik, String status);
 }

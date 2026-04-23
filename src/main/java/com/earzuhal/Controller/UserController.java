@@ -2,6 +2,9 @@ package com.earzuhal.Controller;
 
 import com.earzuhal.Model.User;
 import com.earzuhal.Service.UserService;
+import com.earzuhal.dto.user.ChangePasswordRequest;
+import com.earzuhal.dto.user.NotificationPreferencesRequest;
+import com.earzuhal.dto.user.NotificationPreferencesResponse;
 import com.earzuhal.dto.user.UserResponse;
 import com.earzuhal.dto.user.UserUpdateRequest;
 import jakarta.validation.Valid;
@@ -48,6 +51,33 @@ public class UserController {
         UserResponse updatedUser = userService.updateUser(user.getId(), updateRequest);
 
         return ResponseEntity.ok(updatedUser);
+    }
+
+    @GetMapping("/me/notification-preferences")
+    public ResponseEntity<NotificationPreferencesResponse> getNotificationPreferences() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return ResponseEntity.ok(userService.getNotificationPreferences(username));
+    }
+
+    @PutMapping("/me/notification-preferences")
+    public ResponseEntity<NotificationPreferencesResponse> updateNotificationPreferences(
+            @RequestBody NotificationPreferencesRequest request) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return ResponseEntity.ok(userService.updateNotificationPreferences(username, request));
+    }
+
+    @PutMapping("/me/password")
+    public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        userService.changePassword(username, request);
+        return ResponseEntity.ok(Map.of("message", "Şifre başarıyla güncellendi"));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteCurrentUser() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        userService.deleteCurrentUser(username);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping
