@@ -2,44 +2,25 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="tr">
 <head>
     <meta charset="UTF-8"/>
-    <style>
-        @page { size: A4; margin: 2.5cm 2cm 2.5cm 2cm; }
-        body { font-family: 'Noto Serif', 'Times New Roman', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.6; margin: 0; padding: 0; }
-        .doc-header { text-align: center; border-bottom: 2px solid #1a1a5e; padding-bottom: 12px; margin-bottom: 20px; }
-        .brand { font-size: 9pt; color: #1a1a5e; letter-spacing: 2px; font-weight: bold; }
-        .doc-title { font-size: 16pt; font-weight: bold; color: #1a1a5e; margin: 6px 0 4px 0; letter-spacing: 1px; }
-        .doc-ref { font-size: 9pt; color: #555; margin: 0; }
-        .section { margin-bottom: 16px; }
-        .section-title { font-size: 11pt; font-weight: bold; color: #1a1a5e; border-bottom: 1px solid #ccd; padding-bottom: 2px; margin-bottom: 8px; }
-        table.parties { width: 100%; border-collapse: collapse; }
-        table.parties td { padding: 4px 8px; vertical-align: top; }
-        table.parties td:first-child { font-weight: bold; width: 160px; color: #333; }
-        .content-box { background: #fafafa; border: 1px solid #dde; border-radius: 3px; padding: 12px 14px; white-space: pre-wrap; font-size: 10.5pt; }
-        .amount-box { display: inline-block; background: #eef0ff; border: 1px solid #99a; padding: 6px 14px; border-radius: 3px; font-size: 12pt; font-weight: bold; color: #1a1a5e; margin: 4px 0; }
-        .signatures { margin-top: 40px; page-break-inside: avoid; }
-        .sig-row { display: table; width: 100%; }
-        .sig-cell { display: table-cell; width: 50%; vertical-align: top; text-align: center; padding: 0 20px; }
-        .sig-line { border-top: 1px solid #333; margin: 40px 20px 6px 20px; }
-        .sig-label { font-weight: bold; font-size: 10pt; color: #1a1a5e; }
-        .sig-name { font-size: 10pt; margin-top: 4px; }
-        .sig-date { font-size: 9pt; color: #555; margin-top: 2px; }
-        .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #999; border-top: 1px solid #ddd; padding-top: 6px; }
-
-    </style>
+    <th:block th:replace="~{pdf/fragments/base :: styles}"></th:block>
 </head>
 <body>
+
+    <div class="watermark" th:if="${contract.status == 'DRAFT'}">TASLAK</div>
+    <span class="doc-hash-anchor" th:text="${hashShort}"></span>
 
     <div class="doc-header">
         <div class="brand">e-ARZUHAL — DİJİTAL HUKUK SİSTEMİ</div>
         <div class="doc-title" th:text="${contract.title != null ? contract.title : 'SÖZLEŞME'}">SÖZLEŞME</div>
         <div class="doc-ref">
             Belge No: <span th:text="${contractId}">EA-000001</span> &#160;|&#160;
-            Tarih: <span th:text="${currentDate}">01 Ocak 2026</span>
+            Tarih: <span th:text="${currentDate}">01 Ocak 2026</span> &#160;|&#160;
+            Durum: <span class="status-badge" th:classappend="'status-' + ${contract.status}" th:text="${contract.status}">TASLAK</span>
         </div>
     </div>
 
     <div class="section">
-        <div class="section-title">MADDE 1 — TARAFLAR</div>
+        <div class="section-title">Madde 1 — Taraflar</div>
         <table class="parties">
             <tr>
                 <td>BİRİNCİ TARAF:</td>
@@ -58,25 +39,26 @@
     </div>
 
     <div class="section" th:if="${contract.amount != null and !#strings.isEmpty(contract.amount)}">
-        <div class="section-title">MADDE 2 — BEDEL</div>
+        <div class="section-title">Madde 2 — Bedel</div>
         <div class="amount-box" th:text="${contract.amount}">Bedel</div>
     </div>
 
     <div class="section">
-        <div class="section-title">MADDE 3 — SÖZLEŞMENİN KAPSAMI</div>
-        <div class="content-box" th:text="${contract.content != null ? contract.content : 'Sözleşme içeriği henüz oluşturulmamıştır.'}">
+        <div class="section-title">Madde 3 — Sözleşmenin Kapsamı</div>
+        <div class="content-box"
+             th:text="${contract.content != null ? contract.content : 'Sözleşme içeriği henüz oluşturulmamıştır.'}">
             İçerik.
         </div>
     </div>
 
     <div class="section">
-        <div class="section-title">MADDE 4 — GENEL HÜKÜMLER</div>
+        <div class="section-title">Madde 4 — Genel Hükümler</div>
         <p>1. Bu sözleşme taraflarca okunup anlaşıldıktan sonra imzalanmıştır.</p>
         <p>2. Bu sözleşmeden doğan uyuşmazlıklarda Türkiye Cumhuriyeti mahkemeleri yetkilidir.</p>
     </div>
 
     <div class="signatures">
-        <div class="section-title">İMZALAR</div>
+        <div class="section-title">İmzalar</div>
         <div class="sig-row">
             <div class="sig-cell">
                 <div class="sig-line"></div>
@@ -93,8 +75,24 @@
         </div>
     </div>
 
-    <div class="doc-footer">
-        e-Arzuhal — Dijital Hukuk Sistemi — Belge No: <span th:text="${contractId}">EA-000001</span>
+    <div class="approval-block" th:if="${isApproved}">
+        <div class="approval-block-title">✓ Dijital Onay Kaydı</div>
+        <div class="approval-row">
+            <span class="approval-label">Belge Durumu:</span>
+            <span class="approval-value" th:text="${contract.status}">APPROVED</span>
+        </div>
+        <div class="approval-row">
+            <span class="approval-label">Belge No:</span>
+            <span class="approval-value" th:text="${contractId}">EA-000001</span>
+        </div>
+        <div class="approval-row">
+            <span class="approval-label">SHA-256 Özeti:</span>
+            <span class="approval-value" style="font-size:8pt; word-break:break-all;" th:text="${documentHash}">hash</span>
+        </div>
+        <p style="font-size:8.5pt; color:#555; margin-top:8px; margin-bottom:0;">
+            Bu belge e-Arzuhal Dijital Hukuk Sistemi üzerinde her iki tarafça elektronik olarak onaylanmıştır.
+        </p>
     </div>
+
 </body>
 </html>
