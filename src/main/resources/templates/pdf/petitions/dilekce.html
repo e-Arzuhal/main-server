@@ -2,10 +2,9 @@
 <html xmlns:th="http://www.thymeleaf.org" lang="tr">
 <head>
     <meta charset="UTF-8"/>
+    <th:block th:replace="~{pdf/fragments/base :: styles}"></th:block>
     <style>
-        @page { size: A4; margin: 2.5cm 2.5cm 2.5cm 2.5cm; }
-        body { font-family: 'Noto Serif', 'Times New Roman', serif; font-size: 11pt; color: #1a1a1a; line-height: 1.7; margin: 0; padding: 0; }
-        .doc-header-brand { text-align: right; font-size: 8pt; color: #999; border-bottom: 1px solid #eee; padding-bottom: 6px; margin-bottom: 20px; }
+        /* Dilekçe'ye özgü stiller */
         .addressee-block { margin-bottom: 30px; }
         .addressee-block .kurum { font-size: 12pt; font-weight: bold; color: #1a1a5e; }
         .addressee-block .kurum-adres { font-size: 10.5pt; color: #444; margin-top: 2px; }
@@ -16,26 +15,29 @@
         .govde-block { text-align: justify; font-size: 11pt; line-height: 1.8; white-space: pre-wrap; margin-bottom: 30px; }
         .saygi-block { margin-bottom: 40px; font-size: 11pt; }
         .petitioner-block { text-align: right; margin-top: 10px; }
-        .sig-line { border-top: 1px solid #333; width: 200px; margin: 40px 0 6px auto; }
+        .petitioner-sig-line { border-top: 1px solid #333; width: 200px; margin: 40px 0 6px auto; }
         .petitioner-name { font-weight: bold; font-size: 11pt; }
         .petitioner-info { font-size: 10pt; color: #555; margin-top: 2px; }
         .petition-date { font-size: 10pt; color: #555; margin-top: 4px; }
-        .doc-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 8pt; color: #bbb; border-top: 1px solid #eee; padding-top: 5px; }
-        .ref-line { font-size: 8.5pt; color: #aaa; text-align: right; margin-bottom: 4px; }
+        .ref-line { font-size: 8.5pt; color: #aaa; text-align: right; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-    <div class="doc-header-brand">
+    <span class="doc-hash-anchor" th:text="${hashShort}"></span>
+
+    <div class="ref-line">
         e-Arzuhal Dijital Hukuk Sistemi — <span th:text="${petitionId}">EAD-000001</span>
     </div>
 
-    <!-- Muhatap Bloku -->
+    <!-- Muhatap Bloğu -->
     <div class="addressee-block">
         <div class="kurum" th:text="${petition.kurum != null ? petition.kurum : 'İlgili Makam'}">KURUM ADI</div>
-        <div class="kurum-adres" th:if="${petition.kurumAdresi != null and !#strings.isEmpty(petition.kurumAdresi)}"
+        <div class="kurum-adres"
+             th:if="${petition.kurumAdresi != null and !#strings.isEmpty(petition.kurumAdresi)}"
              th:text="${petition.kurumAdresi}">Kurum Adresi</div>
-        <div class="yetkili" th:if="${petition.yetkili != null and !#strings.isEmpty(petition.yetkili)}"
+        <div class="yetkili"
+             th:if="${petition.yetkili != null and !#strings.isEmpty(petition.yetkili)}"
              th:text="${petition.yetkili}">Sayın Yetkili</div>
     </div>
 
@@ -46,20 +48,19 @@
     </div>
 
     <!-- Gövde -->
-    <div class="govde-block" th:text="${petition.govde != null ? petition.govde : 'Dilekçe içeriği henüz oluşturulmamıştır.'}">
-        Sayın Yetkili,
-
-        Dilekçe içeriği buraya gelecektir.
+    <div class="govde-block"
+         th:text="${petition.govde != null ? petition.govde : 'Dilekçe içeriği henüz oluşturulmamıştır.'}">
+        Sayın Yetkili, dilekçe içeriği buraya gelecektir.
     </div>
 
-    <!-- Saygı ifadesi -->
+    <!-- Saygı İfadesi -->
     <div class="saygi-block">
         Gereğini saygılarımla arz ederim.
     </div>
 
-    <!-- İmza Bloku -->
+    <!-- İmza Bloğu -->
     <div class="petitioner-block">
-        <div class="sig-line"></div>
+        <div class="petitioner-sig-line"></div>
         <div class="petitioner-name" th:text="${ownerFullName}">Ad Soyad</div>
         <div class="petitioner-info"
              th:if="${petition.user.email != null}"
@@ -67,8 +68,12 @@
         <div class="petition-date">Tarih: <span th:text="${currentDate}">01 Ocak 2026</span></div>
     </div>
 
-    <div class="doc-footer">
-        e-Arzuhal — Dijital Hukuk Sistemi — Belge No: <span th:text="${petitionId}">EAD-000001</span>
+    <!-- Belge Parmak İzi (küçük, sayfa altında) -->
+    <div style="margin-top:32px; padding-top:10px; border-top:1px solid #eee; font-size:7.5pt; color:#bbb; text-align:center;">
+        Belge No: <span th:text="${petitionId}">EAD-000001</span> &#160;|&#160;
+        SHA-256: <span th:text="${hashShort}">HASH</span>
+        &#160;|&#160; e-Arzuhal Dijital Hukuk Sistemi
     </div>
+
 </body>
 </html>
