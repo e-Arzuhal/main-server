@@ -37,18 +37,22 @@ public class ContractService {
     private final UserService userService;
     private final DisclaimerService disclaimerService;
     private final ExplanationService explanationService;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
                            IdentityVerificationRepository verificationRepository,
                            UserService userService, DisclaimerService disclaimerService,
-                           ExplanationService explanationService, ObjectMapper objectMapper) {
+                           ExplanationService explanationService,
+                           NotificationService notificationService,
+                           ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
         this.verificationRepository = verificationRepository;
         this.userService = userService;
         this.disclaimerService = disclaimerService;
         this.explanationService = explanationService;
+        this.notificationService = notificationService;
         this.objectMapper = objectMapper;
     }
 
@@ -174,6 +178,18 @@ public class ContractService {
         contract.setStatus("PENDING");
         contract.setUpdatedAt(OffsetDateTime.now());
         Contract updated = contractRepository.save(contract);
+
+        if (contract.getCounterpartyTcKimlik() != null && !contract.getCounterpartyTcKimlik().isBlank()) {
+            userRepository.findByTcKimlik(contract.getCounterpartyTcKimlik())
+                .ifPresent(counterparty -> notificationService.notifyUser(
+                    counterparty,
+                    "CONTRACT_PENDING_APPROVAL",
+                    "Yeni onay bekleyen sozlesme",
+                    "" + contract.getTitle() + " sozlesmesi onayinizi bekliyor.",
+                    contract.getId()
+                ));
+        }
+
         return convertToResponse(updated);
     }
 
@@ -224,16 +240,21 @@ public class ContractService {
         User approver = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
         validateIdentityForApproval(approver);
-
-        // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null &&
-                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-            throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
-        }
+        verifyCounterpartyAccess(contract, approver, "onay");
 
         contract.setStatus("APPROVED");
         contract.setUpdatedAt(OffsetDateTime.now());
-        return convertToResponse(contractRepository.save(contract));
+        Contract saved = contractRepository.save(contract);
+
+        notificationService.notifyUser(
+            contract.getUser(),
+            "CONTRACT_APPROVED",
+            "Sozlesme onaylandi",
+            "" + contract.getTitle() + " sozlesmeniz karsi taraf tarafindan onaylandi.",
+            contract.getId()
+        );
+
+        return convertToResponse(saved);
     }
 
     @Transactional
@@ -255,16 +276,21 @@ public class ContractService {
         User approver = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
         validateIdentityForApproval(approver);
-
-        // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null &&
-                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-            throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
-        }
+        verifyCounterpartyAccess(contract, approver, "ret");
 
         contract.setStatus("REJECTED");
         contract.setUpdatedAt(OffsetDateTime.now());
-        return convertToResponse(contractRepository.save(contract));
+        Contract saved = contractRepository.save(contract);
+
+        notificationService.notifyUser(
+            contract.getUser(),
+            "CONTRACT_REJECTED",
+            "Sozlesme reddedildi",
+            "" + contract.getTitle() + " sozlesmeniz karsi taraf tarafindan reddedildi.",
+            contract.getId()
+        );
+
+        return convertToResponse(saved);
     }
 
     /**
@@ -283,6 +309,17 @@ public class ContractService {
         if (verification.isEmpty() || !"VERIFIED".equals(verification.get().getStatus())) {
             throw new BadRequestException(
                     "Kimlik doğrulama kaydınız bulunamadı veya onaylanmamış. Lütfen Kimlik Doğrulama sayfasını ziyaret edin.");
+        }
+    }
+
+    /** Onay/ret işlemlerinde karşı taraf eşleştirmesini zorunlu tutar. */
+    private void verifyCounterpartyAccess(Contract contract, User approver, String actionName) {
+        String counterpartyTcKimlik = contract.getCounterpartyTcKimlik();
+        if (counterpartyTcKimlik == null || counterpartyTcKimlik.isBlank()) {
+            throw new UnauthorizedException("Karşı taraf bilgisi eksik olduğu için sözleşme " + actionName + " işlemi yapılamaz");
+        }
+        if (!counterpartyTcKimlik.equals(approver.getTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi " + actionName + " yetkisine sahip değilsiniz");
         }
     }
 
