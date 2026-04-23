@@ -6,6 +6,7 @@ import com.earzuhal.Service.PdfService;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -105,6 +106,18 @@ public class ContractController {
         ContractExplanationResponse explanation =
                 contractService.getExplanation(id, getCurrentUsername());
         return ResponseEntity.ok(explanation);
+    }
+
+    /**
+     * PDF oluşturmadan önce kullanıcıya onay verisi sunar.
+     * NLP'nin parse ettiği tutar, taraflar vb. doğrulanabilsin diye.
+     * Frontend bu yanıtı onay dialogunda gösterir; readyForPdf=false ise uyarı gösterilmeli.
+     * GET /api/contracts/{id}/pdf-confirm
+     */
+    @GetMapping("/{id}/pdf-confirm")
+    public ResponseEntity<PdfConfirmResponse> getPdfConfirmData(@PathVariable Long id) {
+        PdfConfirmResponse confirm = contractService.getPdfConfirmData(id, getCurrentUsername());
+        return ResponseEntity.ok(confirm);
     }
 
     /** Sözleşmeyi PDF olarak indir */

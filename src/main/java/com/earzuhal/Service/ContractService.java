@@ -9,6 +9,7 @@ import com.earzuhal.Repository.UserRepository;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.dto.explanation.ClauseExplanationItem;
 import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import com.earzuhal.exception.BadRequestException;
@@ -327,6 +328,80 @@ public class ContractService {
         if (!counterpartyTcKimlik.equals(approver.getTcKimlik())) {
             throw new UnauthorizedException("Bu sözleşmeyi " + actionName + " yetkisine sahip değilsiniz");
         }
+    }
+
+    /**
+     * PDF oluşturmadan önce kullanıcıya gösterilecek onay verisi.
+     * NLP parse'ının doğruluğunu kullanıcının teyit etmesini sağlar.
+     */
+    public PdfConfirmResponse getPdfConfirmData(Long id, String username) {
+        Contract contract = contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
+        verifyOwnership(contract, username);
+
+        java.util.List<String> warnings = new java.util.ArrayList<>();
+
+        if (contract.getAmount() == null || contract.getAmount().isBlank()) {
+            warnings.add("Tutar alanı boş — NLP bu bilgiyi metinden çıkaramadı. Sözleşmeyi güncelleyerek tutarı ekleyebilirsiniz.");
+        }
+        if (contract.getCounterpartyName() == null || contract.getCounterpartyName().isBlank()) {
+            warnings.add("Karşı taraf adı eksik.");
+        }
+        if (contract.getCounterpartyTcKimlik() == null || contract.getCounterpartyTcKimlik().isBlank()) {
+            warnings.add("Karşı taraf TC Kimlik numarası girilmemiş — dijital onay akışı çalışmaz.");
+        }
+        if (contract.getContent() == null || contract.getContent().length() < 50) {
+            warnings.add("Sözleşme içeriği çok kısa — parse hatası olmuş olabilir.");
+        }
+
+        String typeLabel = typeLabelTr(contract.getType());
+        String preview = contract.getContent() != null
+                ? contract.getContent().substring(0, Math.min(300, contract.getContent().length()))
+                : "";
+
+        PdfConfirmResponse.PartyInfo ownerInfo = PdfConfirmResponse.PartyInfo.builder()
+                .displayName(contract.getUser().getFirstName() != null
+                        ? contract.getUser().getFirstName() + " " + contract.getUser().getLastName()
+                        : contract.getUser().getUsername())
+                .role("Sözleşme Sahibi")
+                .build();
+
+        PdfConfirmResponse.PartyInfo counterpartyInfo = PdfConfirmResponse.PartyInfo.builder()
+                .displayName(contract.getCounterpartyName())
+                .role(contract.getCounterpartyRole())
+                .tcMasked(encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik()))
+                .build();
+
+        return PdfConfirmResponse.builder()
+                .contractId(contract.getId())
+                .contractType(typeLabel)
+                .title(contract.getTitle())
+                .status(contract.getStatus())
+                .owner(ownerInfo)
+                .counterparty(counterpartyInfo)
+                .amount(contract.getAmount())
+                .amountPresent(contract.getAmount() != null && !contract.getAmount().isBlank())
+                .contentPreview(preview)
+                .contentLength(contract.getContent() != null ? contract.getContent().length() : 0)
+                .warnings(warnings)
+                .readyForPdf(warnings.isEmpty())
+                .build();
+    }
+
+    private String typeLabelTr(String type) {
+        if (type == null) return "Bilinmiyor";
+        return switch (type.toUpperCase()) {
+            case "RENTAL"           -> "Kira Sözleşmesi";
+            case "SALES"            -> "Satış Sözleşmesi";
+            case "SERVICE"          -> "Hizmet Sözleşmesi";
+            case "EMPLOYMENT"       -> "İş Sözleşmesi";
+            case "LOAN"             -> "Borç Sözleşmesi";
+            case "POWER_OF_ATTORNEY"-> "Vekaletname";
+            case "COMMITMENT"       -> "Taahhütname";
+            case "SURETY"           -> "Kefalet Sözleşmesi";
+            case "NDA"              -> "Gizlilik Sözleşmesi";
+            default                 -> type;
+        };
     }
 
     /** Sözleşme sahibi değilse 404 döner (kaynak maskeleme ile IDOR önleme) */
