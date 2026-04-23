@@ -240,12 +240,7 @@ public class ContractService {
         User approver = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
         validateIdentityForApproval(approver);
-
-        // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null &&
-                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-            throw new UnauthorizedException("Bu sözleşmeyi onaylama yetkisine sahip değilsiniz");
-        }
+        verifyCounterpartyAccess(contract, approver, "onay");
 
         contract.setStatus("APPROVED");
         contract.setUpdatedAt(OffsetDateTime.now());
@@ -281,12 +276,7 @@ public class ContractService {
         User approver = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
         validateIdentityForApproval(approver);
-
-        // D4: TC Kimlik counterparty validation
-        if (contract.getCounterpartyTcKimlik() != null &&
-                !approver.getTcKimlik().equals(contract.getCounterpartyTcKimlik())) {
-            throw new UnauthorizedException("Bu sözleşmeyi reddetme yetkisine sahip değilsiniz");
-        }
+        verifyCounterpartyAccess(contract, approver, "ret");
 
         contract.setStatus("REJECTED");
         contract.setUpdatedAt(OffsetDateTime.now());
@@ -319,6 +309,17 @@ public class ContractService {
         if (verification.isEmpty() || !"VERIFIED".equals(verification.get().getStatus())) {
             throw new BadRequestException(
                     "Kimlik doğrulama kaydınız bulunamadı veya onaylanmamış. Lütfen Kimlik Doğrulama sayfasını ziyaret edin.");
+        }
+    }
+
+    /** Onay/ret işlemlerinde karşı taraf eşleştirmesini zorunlu tutar. */
+    private void verifyCounterpartyAccess(Contract contract, User approver, String actionName) {
+        String counterpartyTcKimlik = contract.getCounterpartyTcKimlik();
+        if (counterpartyTcKimlik == null || counterpartyTcKimlik.isBlank()) {
+            throw new UnauthorizedException("Karşı taraf bilgisi eksik olduğu için sözleşme " + actionName + " işlemi yapılamaz");
+        }
+        if (!counterpartyTcKimlik.equals(approver.getTcKimlik())) {
+            throw new UnauthorizedException("Bu sözleşmeyi " + actionName + " yetkisine sahip değilsiniz");
         }
     }
 

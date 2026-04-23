@@ -1,8 +1,10 @@
 package com.earzuhal.config;
 
 import com.earzuhal.security.CustomUserDetailsService;
+import com.earzuhal.security.AuthRateLimitFilter;
 import com.earzuhal.security.jwt.JwtAuthenticationEntryPoint;
 import com.earzuhal.security.jwt.JwtAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,13 +29,19 @@ public class SecurityConfig {
     private final CustomUserDetailsService customUserDetailsService;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
+
+    @Value("${swagger.enabled:false}")
+    private boolean swaggerEnabled;
 
     public SecurityConfig(CustomUserDetailsService customUserDetailsService,
                          JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint,
-                         JwtAuthenticationFilter jwtAuthenticationFilter) {
+                         JwtAuthenticationFilter jwtAuthenticationFilter,
+                         AuthRateLimitFilter authRateLimitFilter) {
         this.customUserDetailsService = customUserDetailsService;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.authRateLimitFilter = authRateLimitFilter;
     }
 
     @Bean
@@ -63,30 +71,31 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> {
+                    auth
                         // Public endpoints
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/landing/**").permitAll()
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
 
-                        // Swagger UI
-                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                    // Swagger UI — only in dev (swagger.enabled=true)
+                    if (swaggerEnabled) {
+                        auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
+                    }
 
+                    auth
                         // User endpoints
-                        .requestMatchers("/api/users/me").authenticated()
+                        .requestMatchers("/api/users/me", "/api/users/me/**").authenticated()
 
                         // Admin endpoints
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/disclaimer/**").permitAll()
 
                         // All other endpoints require authentication
-                        .anyRequest().authenticated()
-
-                        
-
-
-                )
+                        .anyRequest().authenticated();
+                })
                 .authenticationProvider(authenticationProvider())
+                .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

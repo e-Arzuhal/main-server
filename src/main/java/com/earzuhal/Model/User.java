@@ -51,6 +51,24 @@ public class User {
     @Column(name = "tc_kimlik", length = 11, unique = true)
     private String tcKimlik;
 
+        @Column(name = "notif_email")
+        private Boolean notifEmail = true;
+
+        @Column(name = "notif_sms")
+        private Boolean notifSms = false;
+
+        @Column(name = "notif_push")
+        private Boolean notifPush = true;
+
+        @Column(name = "notif_contract_updates")
+        private Boolean notifContractUpdates = true;
+
+        @Column(name = "notif_approval_requests")
+        private Boolean notifApprovalRequests = true;
+
+        @Column(name = "notif_marketing")
+        private Boolean notifMarketing = false;
+
     @Column(name = "updated_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
