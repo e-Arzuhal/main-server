@@ -160,6 +160,7 @@ POST   /api/contracts/{id}/reject       TC Kimlik doğrulama + idempotency
 GET    /api/contracts/pending-approval
 GET    /api/contracts/stats
 GET    /api/contracts/{id}/explanation
+GET    /api/contracts/{id}/pdf-confirm   PDF öncesi doğrulama (taraflar, tutar, uyarılar)
 ```
 
 **Sözleşme oluşturma gövdesi:**
@@ -247,6 +248,51 @@ Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
 | `vekaletname` | Vekaletname |
 | `taahhutname` | Taahhütname |
 | (diğer) | Genel Sözleşme (fallback) |
+
+---
+
+## PDF Üretimi
+
+Tüm sözleşme ve dilekçe PDF'leri `PdfService` tarafından **openhtmltopdf + Apache PDFBox** ile üretilir.
+
+### Akış
+
+```
+GET /api/contracts/{id}/pdf-confirm
+    └── Taraflar, tutar, içerik önizlemesi, uyarılar döner (readyForPdf flag)
+        └── Frontend kullanıcıya onay dialogu gösterir
+
+GET /api/contracts/{id}/pdf   (kullanıcı onayından sonra)
+    ├── SHA-256 hash hesapla  (id|type|title|content|amount|owner|counterparty)
+    ├── Thymeleaf şablonu işle → HTML
+    ├── openhtmltopdf → ham PDF byte[]
+    └── Apache PDFBox → PDF metadata enjeksiyonu → son byte[]
+```
+
+### PDF İçeriği
+
+Her PDF'e eklenen standart öğeler:
+
+| Öğe | Açıklama |
+|-----|----------|
+| Sayfa numarası | "Sayfa X / Y" — her sayfanın sağ altında |
+| Belge parmak izi | SHA-256'nın ilk 16 karakteri — her sayfanın ortasında |
+| TASLAK filigranı | DRAFT durumundaki belgelerde diyagonal, soluk kırmızı |
+| Onay bloğu | APPROVED/COMPLETED belgelerde: durum, tarih, tam SHA-256 özeti |
+| PDF Metadata | Title, Author, Subject, Keywords, Creator, Producer, DocumentHash (PDFBox) |
+
+### PDF/A
+
+PDF/A-1b (ISO 19005) desteği hazır ama varsayılan olarak kapalıdır (`useFastMode()` ile çakışır).
+Etkinleştirmek için `PdfService.renderToPdf()` içindeki yorum satırını kaldırın:
+```java
+// builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_B);
+```
+
+### Şablonlar
+
+8 sözleşme + 1 dilekçe şablonu `src/main/resources/templates/pdf/` altındadır.
+Paylaşılan CSS (`pdf/fragments/base.html`) sayfa düzeni, tipografi ve ortak bileşenleri tek yerden yönetir.
 
 ---
 
