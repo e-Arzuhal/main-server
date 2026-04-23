@@ -41,7 +41,8 @@ public class Contract {
     @Column(name = "counterparty_role", length = 50)
     private String counterpartyRole;
 
-    @Column(name = "counterparty_tc_kimlik", length = 11)
+    // AES-256/ECB + Base64 ciphertext — şifreli saklanır, decrypt için TcKimlikEncryptionService
+    @Column(name = "counterparty_tc_kimlik", length = 64)
     private String counterpartyTcKimlik;
 
     /**
