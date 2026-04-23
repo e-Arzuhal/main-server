@@ -40,11 +40,14 @@ public class ContractService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
+    private final TcKimlikEncryptionService encryptionService;
+
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
                            IdentityVerificationRepository verificationRepository,
                            UserService userService, DisclaimerService disclaimerService,
                            ExplanationService explanationService,
                            NotificationService notificationService,
+                           TcKimlikEncryptionService encryptionService,
                            ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
@@ -53,6 +56,7 @@ public class ContractService {
         this.disclaimerService = disclaimerService;
         this.explanationService = explanationService;
         this.notificationService = notificationService;
+        this.encryptionService = encryptionService;
         this.objectMapper = objectMapper;
     }
 
@@ -67,7 +71,8 @@ public class ContractService {
         contract.setAmount(request.getAmount());
         contract.setCounterpartyName(request.getCounterpartyName());
         contract.setCounterpartyRole(request.getCounterpartyRole());
-        contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
+        // Karşı taraf TC Kimlik şifreli saklanır
+        contract.setCounterpartyTcKimlik(encryptionService.encrypt(request.getCounterpartyTcKimlik()));
         contract.setStatus("DRAFT");
         contract.setUser(user);
         contract.setCreatedAt(OffsetDateTime.now());
@@ -152,7 +157,8 @@ public class ContractService {
         if (request.getAmount() != null) contract.setAmount(request.getAmount());
         if (request.getCounterpartyName() != null) contract.setCounterpartyName(request.getCounterpartyName());
         if (request.getCounterpartyRole() != null) contract.setCounterpartyRole(request.getCounterpartyRole());
-        if (request.getCounterpartyTcKimlik() != null) contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
+        if (request.getCounterpartyTcKimlik() != null)
+            contract.setCounterpartyTcKimlik(encryptionService.encrypt(request.getCounterpartyTcKimlik()));
         contract.setUpdatedAt(OffsetDateTime.now());
 
         Contract updated = contractRepository.save(contract);
@@ -331,6 +337,8 @@ public class ContractService {
     }
 
     private ContractResponse convertToResponse(Contract contract) {
+        // Karşı taraf TC: API response'da her zaman maskeli göster (123******01)
+        String maskedCounterpartyTc = encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik());
         return ContractResponse.builder()
                 .id(contract.getId())
                 .title(contract.getTitle())
@@ -340,7 +348,7 @@ public class ContractService {
                 .amount(contract.getAmount())
                 .counterpartyName(contract.getCounterpartyName())
                 .counterpartyRole(contract.getCounterpartyRole())
-                .counterpartyTcKimlik(contract.getCounterpartyTcKimlik())
+                .counterpartyTcKimlik(maskedCounterpartyTc)
                 .userId(contract.getUser().getId())
                 .ownerUsername(contract.getUser().getUsername())
                 .createdAt(contract.getCreatedAt())

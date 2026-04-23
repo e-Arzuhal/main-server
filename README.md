@@ -104,6 +104,7 @@ CREATE DATABASE earzuhal_main_server;
 |----------|---------|----------|
 | `POSTGRES_DB_PASSWORD` | ✅ | PostgreSQL şifresi |
 | `JWT_SECRET` | ✅ | Min. 64 karakter. `openssl rand -base64 64` |
+| `TC_ENCRYPTION_KEY` | ✅ | AES-256 anahtarı, tam 32-byte Base64. `openssl rand -base64 32` |
 | `INTERNAL_API_KEY` | Prod ✅ | Python servislerle paylaşılan anahtar. `openssl rand -hex 32` |
 | `CORS_ALLOWED_ORIGINS` | Prod ✅ | Virgülle ayrılmış frontend origin'leri |
 | `NLP_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8001` |
@@ -254,13 +255,34 @@ Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
 - **JWT** — 24 saatlik token, `jti` ile blacklist; `JWT_SECRET` set edilmezse uygulama başlamaz
 - **BCrypt** — Şifre hash (strength 10)
 - **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme); `ContractService.verifyOwnership()`
-- **TC Kimlik** — Ham numara veritabanına kaydedilmez; `"123******01"` formatında maskelenir
-- **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli
+- **TC Kimlik Şifreleme** — AES-256/ECB ile şifreli saklanır (`TcKimlikEncryptionService`). DB'ye plaintext asla yazılmaz. API response'larda her zaman maskeli (`123******01`) döner. Key: `TC_ENCRYPTION_KEY` env var.
+- **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli. Hem kullanıcı hem karşı taraf TC şifreli-şifreli karşılaştırılır.
 - **İdempotency** — Zaten sonuçlanmış sözleşmeye onay/red isteği `400 Bad Request` döner
 - **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz (`UnauthorizedException`)
 - **Disclaimer Kapısı** — Finalize için yasal uyarı kabul zorunlu
 - **Internal API Key** — Python servislere `X-Internal-API-Key` header
 - **Güvenlik Header'ları** — `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Strict-Transport-Security`
+- **Kullanıcı Tespiti Engeli** — Sözleşme oluştururken karşı tarafın sistemde kayıtlı olup olmadığı söylenmez. Bu, isim/TC üzerinden hesap enumeration'ı engeller.
+
+---
+
+## Karşı Taraf Geç Kayıt Akışı
+
+```
+Alice → sözleşme oluşturur, Bob'un TC'sini girer (Bob henüz kayıtlı değil)
+Alice → finalize eder → sözleşme PENDING olur, bildirim gönderilmeye çalışılır ama Bob yok → sessiz geçer
+Bob → uygulamaya kaydolur
+Bob → TC kimliğini doğrular  ← bu adım kritik
+     ↓
+VerificationService.notifyPendingContractsForNewUser()
+     ↓
+contracts tablosunda counterparty_tc_kimlik = Bob'un TC'si olan tüm PENDING sözleşmeler bulunur
+Bob'a her biri için bildirim gönderilir
+     ↓
+Bob getPendingApprovals() çağırır → sözleşmeler otomatik listelenir (TC eşleşmesi ile)
+```
+
+Bu akış sayesinde karşı taraf geç kayıt olsa bile hiçbir sözleşme kaybolmaz ve kullanıcıya "karşı taraf kayıtlı değil" gibi bilgi sızdırılmaz.
 
 ---
 
