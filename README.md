@@ -251,15 +251,54 @@ Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
 
 ## Güvenlik
 
-- **JWT** — 24 saatlik token, `jti` ile blacklist
+- **JWT** — 24 saatlik token, `jti` ile blacklist; `JWT_SECRET` set edilmezse uygulama başlamaz
 - **BCrypt** — Şifre hash (strength 10)
-- **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme)
+- **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme); `ContractService.verifyOwnership()`
 - **TC Kimlik** — Ham numara veritabanına kaydedilmez; `"123******01"` formatında maskelenir
 - **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli
 - **İdempotency** — Zaten sonuçlanmış sözleşmeye onay/red isteği `400 Bad Request` döner
-- **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz
+- **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz (`UnauthorizedException`)
 - **Disclaimer Kapısı** — Finalize için yasal uyarı kabul zorunlu
 - **Internal API Key** — Python servislere `X-Internal-API-Key` header
+- **Güvenlik Header'ları** — `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Strict-Transport-Security`
+
+---
+
+## Observability
+
+Her HTTP isteğine `X-Request-ID` atanır (`RequestIdFilter`). İstek dışarıdan geliyorsa mevcut değer korunur, yoksa UUID üretilir. Tüm Python servislerine WebClient üzerinden forward edilir.
+
+Log örneği:
+```
+10:42:13.450 INFO  [http-nio-8080-exec-1] [req-3fa2c1d8] ContractService - Sözleşme oluşturuldu id=42
+```
+
+Aynı `request_id`, nlp-server/graphrag-server/statistics-server loglarında da görünür.
+
+---
+
+## Testler
+
+```bash
+# Tüm testler
+mvn test
+
+# Sadece güvenlik testleri (IDOR + HTTP akış)
+mvn test -Dtest="ContractServiceSecurityTest,ContractFlowIT"
+```
+
+**ContractServiceSecurityTest** — IDOR koruması unit testleri (DB gerektirmez):
+- `getById` başka kullanıcı → 404
+- `update` başka kullanıcı → 404
+- `delete` başka kullanıcı → 404
+- `approve` kendi sözleşmesi → 401
+- `reject` kendi sözleşmesi → 401
+
+**ContractFlowIT** — HTTP katmanı entegrasyon testleri (MockMvc):
+- Token olmadan → 403
+- CRUD akışı → 201/200
+- IDOR → 404
+- X-Request-ID echo → response header'da
 
 ---
 
