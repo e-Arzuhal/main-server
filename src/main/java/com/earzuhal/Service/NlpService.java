@@ -37,7 +37,10 @@ public class NlpService {
                     .block();
         } catch (WebClientResponseException e) {
             log.error("NLP servis hatası: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("NLP servisi yanıt vermedi: " + e.getMessage(), e);
+            throw new RuntimeException("NLP servisi hata döndürdü: " + e.getStatusCode(), e);
+        } catch (io.netty.channel.ConnectTimeoutException | java.util.concurrent.TimeoutException e) {
+            log.error("NLP servis zaman aşımı (3s connect / 15s response): {}", e.getMessage());
+            throw new RuntimeException("NLP servisi yanıt süresi aşıldı. Servisin çalıştığından emin olun.", e);
         } catch (Exception e) {
             log.error("NLP servise bağlanılamadı: {}", e.getMessage());
             throw new RuntimeException("NLP servise bağlanılamadı. Servisin çalıştığından emin olun.", e);

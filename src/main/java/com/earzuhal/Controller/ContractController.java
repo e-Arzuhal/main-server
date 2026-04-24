@@ -120,6 +120,26 @@ public class ContractController {
         return ResponseEntity.ok(confirm);
     }
 
+    /**
+     * PDF'deki SHA-256 parmak izini DB'den yeniden hesaplayıp karşılaştırır.
+     * GET /api/contracts/{id}/verify?hash=<sha256>
+     * Belgeyi elinde bulunduran herhangi bir taraf (sahip ya da karşı taraf değil,
+     * mevcut akışta yalnızca sahip) doğrulama yapabilir.
+     */
+    @GetMapping("/{id}/verify")
+    public ResponseEntity<java.util.Map<String, Object>> verifyDocumentHash(
+            @PathVariable Long id,
+            @RequestParam String hash) {
+        com.earzuhal.Model.Contract contract = contractService.getEntityById(id, getCurrentUsername());
+        String expected = pdfService.computeContractHash(contract);
+        boolean valid = expected.equalsIgnoreCase(hash);
+        return ResponseEntity.ok(java.util.Map.of(
+                "valid", valid,
+                "contractId", id,
+                "message", valid ? "Belge bütünlüğü doğrulandı." : "Hash uyuşmuyor — belge değiştirilmiş olabilir."
+        ));
+    }
+
     /** Sözleşmeyi PDF olarak indir */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
