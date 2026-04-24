@@ -94,7 +94,7 @@ public class PdfService {
         String html = templateEngine.process("pdf/petitions/dilekce", ctx);
         byte[] raw = renderToPdf(html);
 
-        String title = petition.getTitle() != null ? petition.getTitle() : "Dilekçe";
+        String title = petition.getKonu() != null ? petition.getKonu() : "Dilekçe";
         return injectPdfMetadata(raw, title, ownerFullName,
                 "Dilekçe — " + petitionId,
                 "e-Arzuhal dilekçe hukuk dijital",
@@ -163,8 +163,8 @@ public class PdfService {
 
     public String computePetitionHash(Petition petition) {
         String input = petition.getId()
-                + "|" + nullSafe(petition.getTitle())
-                + "|" + nullSafe(petition.getContent())
+                + "|" + nullSafe(petition.getKonu())
+                + "|" + nullSafe(petition.getGovde())
                 + "|" + (petition.getUser() != null ? nullSafe(petition.getUser().getUsername()) : "");
         return sha256(input);
     }
