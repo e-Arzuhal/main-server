@@ -3,6 +3,7 @@ package com.earzuhal.Controller;
 import com.earzuhal.Service.VerificationService;
 import com.earzuhal.dto.verification.VerificationRequest;
 import com.earzuhal.dto.verification.VerificationResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -23,7 +24,7 @@ public class VerificationController {
      */
     @PostMapping("/identity")
     public ResponseEntity<VerificationResponse> verify(
-            @RequestBody VerificationRequest request,
+            @Valid @RequestBody VerificationRequest request,
             Authentication authentication) {
         return ResponseEntity.ok(verificationService.verify(request, authentication.getName()));
     }

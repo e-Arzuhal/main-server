@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.List;
@@ -48,7 +49,7 @@ public class GraphRagService {
             log.error("GraphRAG servis hatası: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             log.warn("GraphRAG servis hatası nedeniyle boş analiz dönülüyor");
             return buildFallbackResponse(contractType);
-        } catch (io.netty.channel.ConnectTimeoutException | java.util.concurrent.TimeoutException e) {
+        } catch (WebClientRequestException e) {
             log.error("GraphRAG servis zaman aşımı: {}", e.getMessage());
             return buildFallbackResponse(contractType);
         } catch (Exception e) {
