@@ -61,6 +61,24 @@ public class PetitionController {
         return ResponseEntity.ok(petitionService.complete(id, currentUsername()));
     }
 
+    /**
+     * PDF'deki SHA-256 parmak izini DB'den yeniden hesaplayıp karşılaştırır.
+     * GET /api/petitions/{id}/verify?hash=<sha256>
+     */
+    @GetMapping("/{id}/verify")
+    public ResponseEntity<java.util.Map<String, Object>> verifyDocumentHash(
+            @PathVariable Long id,
+            @RequestParam String hash) {
+        com.earzuhal.Model.Petition petition = petitionService.getEntityById(id, currentUsername());
+        String expected = pdfService.computePetitionHash(petition);
+        boolean valid = expected.equalsIgnoreCase(hash);
+        return ResponseEntity.ok(java.util.Map.of(
+                "valid", valid,
+                "petitionId", id,
+                "message", valid ? "Belge bütünlüğü doğrulandı." : "Hash uyuşmuyor — belge değiştirilmiş olabilir."
+        ));
+    }
+
     /** Dilekçeyi PDF olarak indir */
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {

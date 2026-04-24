@@ -15,9 +15,13 @@ import java.util.Base64;
  *   üretmeli. findByTcKimlik(), findByCounterpartyTcKimlik() şifrelenmiş değeri
  *   DB'deki şifrelenmiş değerle karşılaştırır — bu ancak deterministic encryption ile çalışır.
  *
- * Güvenlik notu:
- *   TC Kimlik, doğası gereği zaten unique bir identifier; ECB pattern analizi bu context'te
- *   risk oluşturmaz. Key environment variable'dan alınır, DB'ye yazılmaz.
+ * Güvenlik notu — ECB neden burada kabul edilebilir?
+ *   ECB'nin bilinen zafiyeti, aynı 16-byte blokların aynı ciphertext'e dönüşmesidir;
+ *   bu durum tekrar eden bloklardan oluşan uzun veride görsel örüntü sızdırır.
+ *   TC Kimlik 11 ASCII karakterdir — PKCS5 padding sonrası tam 16 byte (tek blok).
+ *   Tek bloklu plaintext'te birden fazla aynı blok oluşması mümkün değildir;
+ *   dolayısıyla ECB'nin pattern analizi zafiyeti bu input boyutunda tetiklenemez.
+ *   Key environment variable'dan alınır, plaintext DB'ye yazılmaz.
  *
  * Anahtar format: 32-byte değerin Base64 encoding'i (openssl rand -base64 32 ile üret).
  */

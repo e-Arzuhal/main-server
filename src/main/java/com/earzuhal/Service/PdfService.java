@@ -106,9 +106,8 @@ public class PdfService {
     private byte[] renderToPdf(String html) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
-            builder.useFastMode();
-            // PDF/A-1b için: builder.useFastMode() satırını kaldır ve aşağıdakini etkinleştir:
-            // builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_B);
+            // PDF/A-1b (ISO 19005) — arşiv standardı, mahkemeye sunulabilir belge
+            builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_B);
             registerFonts(builder);
             builder.withHtmlContent(html, null);
             builder.toStream(out);
@@ -151,7 +150,7 @@ public class PdfService {
 
     // ── SHA-256 hash ─────────────────────────────────────────────────────────
 
-    private String computeContractHash(Contract contract) {
+    public String computeContractHash(Contract contract) {
         String input = contract.getId()
                 + "|" + nullSafe(contract.getType())
                 + "|" + nullSafe(contract.getTitle())
@@ -162,7 +161,7 @@ public class PdfService {
         return sha256(input);
     }
 
-    private String computePetitionHash(Petition petition) {
+    public String computePetitionHash(Petition petition) {
         String input = petition.getId()
                 + "|" + nullSafe(petition.getTitle())
                 + "|" + nullSafe(petition.getContent())

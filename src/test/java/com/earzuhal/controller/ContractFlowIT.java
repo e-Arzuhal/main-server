@@ -3,9 +3,12 @@ package com.earzuhal.controller;
 import com.earzuhal.Controller.ContractController;
 import com.earzuhal.Service.ContractService;
 import com.earzuhal.Service.PdfService;
+import com.earzuhal.Model.Contract;
+import com.earzuhal.Model.User;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.exception.GlobalExceptionHandler;
 import com.earzuhal.exception.ResourceNotFoundException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -166,7 +169,99 @@ class ContractFlowIT {
                 .andExpect(jsonPath("$.totalCount").value(3));
     }
 
+    // ── PDF Confirm ─────────────────────────────────────────────────────────
+
+    @Test
+    @WithMockUser(username = "alice")
+    @DisplayName("200 — pdf-confirm taraflar, tutar ve uyarıları döndürüyor")
+    void pdf_confirm_returns_200_with_data() throws Exception {
+        PdfConfirmResponse confirm = PdfConfirmResponse.builder()
+                .contractId(1L)
+                .contractType("Kira Sözleşmesi")
+                .title("Kira Sözleşmesi")
+                .status("DRAFT")
+                .amount("15.000 TL")
+                .amountPresent(true)
+                .contentPreview("Kiracı Ali...")
+                .contentLength(200)
+                .warnings(List.of())
+                .readyForPdf(true)
+                .owner(PdfConfirmResponse.PartyInfo.builder().displayName("Alice").role("Sözleşme Sahibi").build())
+                .counterparty(PdfConfirmResponse.PartyInfo.builder().displayName("Bob").role("Kiracı").build())
+                .build();
+
+        when(contractService.getPdfConfirmData(1L, "alice")).thenReturn(confirm);
+
+        mvc.perform(get("/api/contracts/1/pdf-confirm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.readyForPdf").value(true))
+                .andExpect(jsonPath("$.amount").value("15.000 TL"));
+    }
+
+    @Test
+    @WithMockUser(username = "alice")
+    @DisplayName("200 — pdf-confirm uyarılar varsa readyForPdf=false dönüyor")
+    void pdf_confirm_with_warnings_not_ready() throws Exception {
+        PdfConfirmResponse confirm = PdfConfirmResponse.builder()
+                .contractId(1L).contractType("Kira Sözleşmesi").title("Test").status("DRAFT")
+                .amountPresent(false).contentLength(10).contentPreview("")
+                .warnings(List.of("Tutar alanı boş."))
+                .readyForPdf(false)
+                .build();
+
+        when(contractService.getPdfConfirmData(1L, "alice")).thenReturn(confirm);
+
+        mvc.perform(get("/api/contracts/1/pdf-confirm"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.readyForPdf").value(false))
+                .andExpect(jsonPath("$.warnings[0]").value("Tutar alanı boş."));
+    }
+
+    // ── Hash Verify ──────────────────────────────────────────────────────────
+
+    @Test
+    @WithMockUser(username = "alice")
+    @DisplayName("200 valid=true — doğru hash ile belge doğrulanıyor")
+    void verify_with_correct_hash_returns_valid_true() throws Exception {
+        Contract contract = buildMockContract(1L, "alice");
+        String correctHash = "abc123def456";
+
+        when(contractService.getEntityById(1L, "alice")).thenReturn(contract);
+        when(pdfService.computeContractHash(contract)).thenReturn(correctHash);
+
+        mvc.perform(get("/api/contracts/1/verify").param("hash", correctHash))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.contractId").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "alice")
+    @DisplayName("200 valid=false — yanlış hash ile belge doğrulanmıyor")
+    void verify_with_wrong_hash_returns_valid_false() throws Exception {
+        Contract contract = buildMockContract(1L, "alice");
+
+        when(contractService.getEntityById(1L, "alice")).thenReturn(contract);
+        when(pdfService.computeContractHash(contract)).thenReturn("correcthash");
+
+        mvc.perform(get("/api/contracts/1/verify").param("hash", "wronghash"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false));
+    }
+
     // ── Yardımcı ────────────────────────────────────────────────────────────
+
+    private Contract buildMockContract(Long id, String username) {
+        User user = new User();
+        user.setUsername(username);
+        Contract contract = new Contract();
+        contract.setId(id);
+        contract.setTitle("Kira Sözleşmesi");
+        contract.setType("kira_sozlesmesi");
+        contract.setStatus("APPROVED");
+        contract.setUser(user);
+        return contract;
+    }
 
     private ContractResponse sampleResponse(Long id, String owner) {
         return ContractResponse.builder()

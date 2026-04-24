@@ -161,6 +161,7 @@ GET    /api/contracts/pending-approval
 GET    /api/contracts/stats
 GET    /api/contracts/{id}/explanation
 GET    /api/contracts/{id}/pdf-confirm   PDF öncesi doğrulama (taraflar, tutar, uyarılar)
+GET    /api/contracts/{id}/verify?hash=  Belge parmak izi doğrulama → { valid, contractId, message }
 ```
 
 **Sözleşme oluşturma gövdesi:**
@@ -283,11 +284,8 @@ Her PDF'e eklenen standart öğeler:
 
 ### PDF/A
 
-PDF/A-1b (ISO 19005) desteği hazır ama varsayılan olarak kapalıdır (`useFastMode()` ile çakışır).
-Etkinleştirmek için `PdfService.renderToPdf()` içindeki yorum satırını kaldırın:
-```java
-// builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_B);
-```
+PDF/A-1b (ISO 19005) aktif — tüm belgeler arşiv standardına uygun üretilir.
+Font gömme openhtmltopdf tarafından otomatik yapılır; `useFastMode()` kaldırılmıştır.
 
 ### Şablonlar
 
@@ -302,6 +300,7 @@ Paylaşılan CSS (`pdf/fragments/base.html`) sayfa düzeni, tipografi ve ortak b
 - **BCrypt** — Şifre hash (strength 10)
 - **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme); `ContractService.verifyOwnership()`
 - **TC Kimlik Şifreleme** — AES-256/ECB ile şifreli saklanır (`TcKimlikEncryptionService`). DB'ye plaintext asla yazılmaz. API response'larda her zaman maskeli (`123******01`) döner. Key: `TC_ENCRYPTION_KEY` env var.
+  - *ECB neden?* — Equality sorgusu (`findByTcKimlik`) için deterministic encryption şart. ECB'nin klasik pattern analizi zafiyeti çok bloklu plaintext'te oluşur; 11-byte TC Kimlik, PKCS5 padding sonrası daima tek AES bloğuna (16 byte) sığar, dolayısıyla blok tekrarı yapısal olarak imkansızdır.
 - **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli. Hem kullanıcı hem karşı taraf TC şifreli-şifreli karşılaştırılır.
 - **İdempotency** — Zaten sonuçlanmış sözleşmeye onay/red isteği `400 Bad Request` döner
 - **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz (`UnauthorizedException`)
