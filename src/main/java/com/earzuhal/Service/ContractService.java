@@ -6,6 +6,7 @@ import com.earzuhal.Model.User;
 import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.Repository.IdentityVerificationRepository;
 import com.earzuhal.Repository.UserRepository;
+import com.earzuhal.dto.analysis.ContractTypeMapping;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
@@ -42,6 +43,7 @@ public class ContractService {
     private final ObjectMapper objectMapper;
 
     private final TcKimlikEncryptionService encryptionService;
+    private final StatisticsService statisticsService;
 
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
                            IdentityVerificationRepository verificationRepository,
@@ -49,6 +51,7 @@ public class ContractService {
                            ExplanationService explanationService,
                            NotificationService notificationService,
                            TcKimlikEncryptionService encryptionService,
+                           StatisticsService statisticsService,
                            ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
@@ -58,6 +61,7 @@ public class ContractService {
         this.explanationService = explanationService;
         this.notificationService = notificationService;
         this.encryptionService = encryptionService;
+        this.statisticsService = statisticsService;
         this.objectMapper = objectMapper;
     }
 
@@ -261,6 +265,9 @@ public class ContractService {
             contract.getId()
         );
 
+        statisticsService.recordOutcomeAsync(
+            ContractTypeMapping.toTurkish(contract.getType()), true);
+
         return convertToResponse(saved);
     }
 
@@ -296,6 +303,9 @@ public class ContractService {
             "" + contract.getTitle() + " sozlesmeniz karsi taraf tarafindan reddedildi.",
             contract.getId()
         );
+
+        statisticsService.recordOutcomeAsync(
+            ContractTypeMapping.toTurkish(contract.getType()), false);
 
         return convertToResponse(saved);
     }

@@ -69,6 +69,25 @@ public class StatisticsService {
                 );
     }
 
+    /**
+     * Sözleşme onay/ret sonucunu statistics-server'a asenkron olarak bildirir.
+     * Fire-and-forget — hata durumunda ana akış kesilmez.
+     *
+     * @param contractType  Türkçe sözleşme tipi (ContractTypeMapping.toTurkish ile dönüştürülmüş)
+     * @param approved      true → onaylandı, false → reddedildi
+     */
+    public void recordOutcomeAsync(String contractType, boolean approved) {
+        webClient.post()
+                .uri("/stats/{type}/mark-outcome", contractType)
+                .bodyValue(java.util.Map.of("approved", approved))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .subscribe(
+                        ignored -> log.debug("Sonuç istatistiği güncellendi: tip={}, onaylı={}", contractType, approved),
+                        error  -> log.warn("Statistics sonuç güncellemesi başarısız: {}", error.getMessage())
+                );
+    }
+
     private boolean isRetryable(Throwable error) {
         if (error instanceof WebClientResponseException webClientError) {
             return webClientError.getStatusCode().is5xxServerError() || webClientError.getStatusCode().value() == 429;
