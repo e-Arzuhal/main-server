@@ -6,9 +6,11 @@ import com.earzuhal.Model.User;
 import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.Repository.IdentityVerificationRepository;
 import com.earzuhal.Repository.UserRepository;
+import com.earzuhal.dto.analysis.ContractTypeMapping;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.dto.explanation.ClauseExplanationItem;
 import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import com.earzuhal.exception.BadRequestException;
@@ -40,11 +42,16 @@ public class ContractService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
 
+    private final TcKimlikEncryptionService encryptionService;
+    private final StatisticsService statisticsService;
+
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
                            IdentityVerificationRepository verificationRepository,
                            UserService userService, DisclaimerService disclaimerService,
                            ExplanationService explanationService,
                            NotificationService notificationService,
+                           TcKimlikEncryptionService encryptionService,
+                           StatisticsService statisticsService,
                            ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
@@ -53,6 +60,8 @@ public class ContractService {
         this.disclaimerService = disclaimerService;
         this.explanationService = explanationService;
         this.notificationService = notificationService;
+        this.encryptionService = encryptionService;
+        this.statisticsService = statisticsService;
         this.objectMapper = objectMapper;
     }
 
@@ -67,7 +76,8 @@ public class ContractService {
         contract.setAmount(request.getAmount());
         contract.setCounterpartyName(request.getCounterpartyName());
         contract.setCounterpartyRole(request.getCounterpartyRole());
-        contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
+        // Karşı taraf TC Kimlik şifreli saklanır
+        contract.setCounterpartyTcKimlik(encryptionService.encrypt(request.getCounterpartyTcKimlik()));
         contract.setStatus("DRAFT");
         contract.setUser(user);
         contract.setCreatedAt(OffsetDateTime.now());
@@ -152,7 +162,8 @@ public class ContractService {
         if (request.getAmount() != null) contract.setAmount(request.getAmount());
         if (request.getCounterpartyName() != null) contract.setCounterpartyName(request.getCounterpartyName());
         if (request.getCounterpartyRole() != null) contract.setCounterpartyRole(request.getCounterpartyRole());
-        if (request.getCounterpartyTcKimlik() != null) contract.setCounterpartyTcKimlik(request.getCounterpartyTcKimlik());
+        if (request.getCounterpartyTcKimlik() != null)
+            contract.setCounterpartyTcKimlik(encryptionService.encrypt(request.getCounterpartyTcKimlik()));
         contract.setUpdatedAt(OffsetDateTime.now());
 
         Contract updated = contractRepository.save(contract);
@@ -254,6 +265,9 @@ public class ContractService {
             contract.getId()
         );
 
+        statisticsService.recordOutcomeAsync(
+            ContractTypeMapping.toTurkish(contract.getType()), true);
+
         return convertToResponse(saved);
     }
 
@@ -290,6 +304,9 @@ public class ContractService {
             contract.getId()
         );
 
+        statisticsService.recordOutcomeAsync(
+            ContractTypeMapping.toTurkish(contract.getType()), false);
+
         return convertToResponse(saved);
     }
 
@@ -323,6 +340,80 @@ public class ContractService {
         }
     }
 
+    /**
+     * PDF oluşturmadan önce kullanıcıya gösterilecek onay verisi.
+     * NLP parse'ının doğruluğunu kullanıcının teyit etmesini sağlar.
+     */
+    public PdfConfirmResponse getPdfConfirmData(Long id, String username) {
+        Contract contract = contractRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
+        verifyOwnership(contract, username);
+
+        java.util.List<String> warnings = new java.util.ArrayList<>();
+
+        if (contract.getAmount() == null || contract.getAmount().isBlank()) {
+            warnings.add("Tutar alanı boş — NLP bu bilgiyi metinden çıkaramadı. Sözleşmeyi güncelleyerek tutarı ekleyebilirsiniz.");
+        }
+        if (contract.getCounterpartyName() == null || contract.getCounterpartyName().isBlank()) {
+            warnings.add("Karşı taraf adı eksik.");
+        }
+        if (contract.getCounterpartyTcKimlik() == null || contract.getCounterpartyTcKimlik().isBlank()) {
+            warnings.add("Karşı taraf TC Kimlik numarası girilmemiş — dijital onay akışı çalışmaz.");
+        }
+        if (contract.getContent() == null || contract.getContent().length() < 50) {
+            warnings.add("Sözleşme içeriği çok kısa — parse hatası olmuş olabilir.");
+        }
+
+        String typeLabel = typeLabelTr(contract.getType());
+        String preview = contract.getContent() != null
+                ? contract.getContent().substring(0, Math.min(300, contract.getContent().length()))
+                : "";
+
+        PdfConfirmResponse.PartyInfo ownerInfo = PdfConfirmResponse.PartyInfo.builder()
+                .displayName(contract.getUser().getFirstName() != null
+                        ? contract.getUser().getFirstName() + " " + contract.getUser().getLastName()
+                        : contract.getUser().getUsername())
+                .role("Sözleşme Sahibi")
+                .build();
+
+        PdfConfirmResponse.PartyInfo counterpartyInfo = PdfConfirmResponse.PartyInfo.builder()
+                .displayName(contract.getCounterpartyName())
+                .role(contract.getCounterpartyRole())
+                .tcMasked(encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik()))
+                .build();
+
+        return PdfConfirmResponse.builder()
+                .contractId(contract.getId())
+                .contractType(typeLabel)
+                .title(contract.getTitle())
+                .status(contract.getStatus())
+                .owner(ownerInfo)
+                .counterparty(counterpartyInfo)
+                .amount(contract.getAmount())
+                .amountPresent(contract.getAmount() != null && !contract.getAmount().isBlank())
+                .contentPreview(preview)
+                .contentLength(contract.getContent() != null ? contract.getContent().length() : 0)
+                .warnings(warnings)
+                .readyForPdf(warnings.isEmpty())
+                .build();
+    }
+
+    private String typeLabelTr(String type) {
+        if (type == null) return "Bilinmiyor";
+        return switch (type.toUpperCase()) {
+            case "RENTAL"           -> "Kira Sözleşmesi";
+            case "SALES"            -> "Satış Sözleşmesi";
+            case "SERVICE"          -> "Hizmet Sözleşmesi";
+            case "EMPLOYMENT"       -> "İş Sözleşmesi";
+            case "LOAN"             -> "Borç Sözleşmesi";
+            case "POWER_OF_ATTORNEY"-> "Vekaletname";
+            case "COMMITMENT"       -> "Taahhütname";
+            case "SURETY"           -> "Kefalet Sözleşmesi";
+            case "NDA"              -> "Gizlilik Sözleşmesi";
+            default                 -> type;
+        };
+    }
+
     /** Sözleşme sahibi değilse 404 döner (kaynak maskeleme ile IDOR önleme) */
     private void verifyOwnership(Contract contract, String username) {
         if (!contract.getUser().getUsername().equals(username)) {
@@ -331,6 +422,8 @@ public class ContractService {
     }
 
     private ContractResponse convertToResponse(Contract contract) {
+        // Karşı taraf TC: API response'da her zaman maskeli göster (123******01)
+        String maskedCounterpartyTc = encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik());
         return ContractResponse.builder()
                 .id(contract.getId())
                 .title(contract.getTitle())
@@ -340,7 +433,7 @@ public class ContractService {
                 .amount(contract.getAmount())
                 .counterpartyName(contract.getCounterpartyName())
                 .counterpartyRole(contract.getCounterpartyRole())
-                .counterpartyTcKimlik(contract.getCounterpartyTcKimlik())
+                .counterpartyTcKimlik(maskedCounterpartyTc)
                 .userId(contract.getUser().getId())
                 .ownerUsername(contract.getUser().getUsername())
                 .createdAt(contract.getCreatedAt())

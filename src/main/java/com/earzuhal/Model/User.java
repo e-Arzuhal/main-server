@@ -48,7 +48,8 @@ public class User {
     @Column(name = "created_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
-    @Column(name = "tc_kimlik", length = 11, unique = true)
+    // AES-256/ECB + Base64 ciphertext: 11-byte plaintext → 16-byte block → 24-char Base64
+    @Column(name = "tc_kimlik", length = 64, unique = true)
     private String tcKimlik;
 
         @Column(name = "notif_email")

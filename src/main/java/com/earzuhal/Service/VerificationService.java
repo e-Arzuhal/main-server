@@ -1,7 +1,9 @@
 package com.earzuhal.Service;
 
+import com.earzuhal.Model.Contract;
 import com.earzuhal.Model.IdentityVerification;
 import com.earzuhal.Model.User;
+import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.Repository.IdentityVerificationRepository;
 import com.earzuhal.dto.verification.VerificationRequest;
 import com.earzuhal.dto.verification.VerificationResponse;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -20,11 +23,20 @@ public class VerificationService {
     private static final Logger log = LoggerFactory.getLogger(VerificationService.class);
 
     private final IdentityVerificationRepository verificationRepository;
+    private final ContractRepository contractRepository;
+    private final NotificationService notificationService;
+    private final TcKimlikEncryptionService encryptionService;
     private final UserService userService;
 
     public VerificationService(IdentityVerificationRepository verificationRepository,
+                               ContractRepository contractRepository,
+                               NotificationService notificationService,
+                               TcKimlikEncryptionService encryptionService,
                                UserService userService) {
         this.verificationRepository = verificationRepository;
+        this.contractRepository = contractRepository;
+        this.notificationService = notificationService;
+        this.encryptionService = encryptionService;
         this.userService = userService;
     }
 
@@ -63,10 +75,15 @@ public class VerificationService {
 
         verificationRepository.save(verification);
 
-        // Kullanıcının tcKimlik alanını güncelle (onay routing için gerekli)
-        user.setTcKimlik(request.getTcNo());
+        // TC Kimlik'i şifreleyerek kaydet — plaintext asla DB'ye yazılmaz
+        String encryptedTc = encryptionService.encrypt(request.getTcNo());
+        user.setTcKimlik(encryptedTc);
 
         log.info("Identity verified for user={} method={}", username, verification.getVerificationMethod());
+
+        // Kimlik doğrulandıktan sonra: bu TC ile bekleyen sözleşmeleri bildir.
+        // Bu sayede karşı taraf uygulamaya sonradan kayıt olsa bile PENDING sözleşmelerini görür.
+        notifyPendingContractsForNewUser(user, encryptedTc);
 
         return VerificationResponse.builder()
                 .status("VERIFIED")
@@ -103,6 +120,38 @@ public class VerificationService {
                 .verifiedAt(v.getVerifiedAt())
                 .verified(true)
                 .build();
+    }
+
+    /**
+     * Yeni kimlik doğrulaması yapan kullanıcıya, daha önce başkası tarafından
+     * bu TC ile oluşturulmuş PENDING sözleşmeleri bildirir.
+     *
+     * Senaryo: Alice sözleşme oluşturdu, karşı taraf Bob'un TC'sini girdi.
+     * Bob henüz kayıtlı değildi. Bob kayıt olup TC doğruladığında bekleyen
+     * sözleşmelerini burada öğrenir.
+     */
+    private void notifyPendingContractsForNewUser(User user, String encryptedTc) {
+        try {
+            List<Contract> pending = contractRepository
+                    .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(encryptedTc, "PENDING");
+            if (pending.isEmpty()) return;
+
+            log.info("Yeni kimlik doğrulaması: user={} için {} PENDING sözleşme bulundu",
+                    user.getUsername(), pending.size());
+
+            for (Contract contract : pending) {
+                notificationService.notifyUser(
+                        user,
+                        "CONTRACT_PENDING_APPROVAL",
+                        "Onay bekleyen sözleşme",
+                        "\"" + contract.getTitle() + "\" başlıklı sözleşme onayınızı bekliyor.",
+                        contract.getId()
+                );
+            }
+        } catch (Exception e) {
+            // Bildirim hatası, ana akışı bozmamalı
+            log.warn("Bekleyen sözleşme bildirimi gönderilemedi: user={} hata={}", user.getUsername(), e.getMessage());
+        }
     }
 
     /**

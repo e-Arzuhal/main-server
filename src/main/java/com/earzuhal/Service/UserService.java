@@ -24,10 +24,13 @@ public class UserService {
     @Autowired
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TcKimlikEncryptionService encryptionService;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder,
+                       TcKimlikEncryptionService encryptionService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.encryptionService = encryptionService;
     }
 
     public List<UserResponse> getAllUsers() {
@@ -91,7 +94,9 @@ public class UserService {
     }
 
     public java.util.Map<String, Object> lookupByTcKimlik(String tcKimlik) {
-        return userRepository.findByTcKimlik(tcKimlik)
+        // Frontend plaintext TC gönderir; DB'de şifreli aranmalı
+        String encryptedTc = encryptionService.encrypt(tcKimlik);
+        return userRepository.findByTcKimlik(encryptedTc)
                 .map(u -> {
                     java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
                     result.put("found", true);

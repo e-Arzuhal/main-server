@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.Map;
@@ -37,7 +38,10 @@ public class NlpService {
                     .block();
         } catch (WebClientResponseException e) {
             log.error("NLP servis hatası: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("NLP servisi yanıt vermedi: " + e.getMessage(), e);
+            throw new RuntimeException("NLP servisi hata döndürdü: " + e.getStatusCode(), e);
+        } catch (WebClientRequestException e) {
+            log.error("NLP servis zaman aşımı (3s connect / 15s response): {}", e.getMessage());
+            throw new RuntimeException("NLP servisi yanıt süresi aşıldı. Servisin çalıştığından emin olun.", e);
         } catch (Exception e) {
             log.error("NLP servise bağlanılamadı: {}", e.getMessage());
             throw new RuntimeException("NLP servise bağlanılamadı. Servisin çalıştığından emin olun.", e);

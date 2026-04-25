@@ -104,6 +104,7 @@ CREATE DATABASE earzuhal_main_server;
 |----------|---------|----------|
 | `POSTGRES_DB_PASSWORD` | ✅ | PostgreSQL şifresi |
 | `JWT_SECRET` | ✅ | Min. 64 karakter. `openssl rand -base64 64` |
+| `TC_ENCRYPTION_KEY` | ✅ | AES-256 anahtarı, tam 32-byte Base64. `openssl rand -base64 32` |
 | `INTERNAL_API_KEY` | Prod ✅ | Python servislerle paylaşılan anahtar. `openssl rand -hex 32` |
 | `CORS_ALLOWED_ORIGINS` | Prod ✅ | Virgülle ayrılmış frontend origin'leri |
 | `NLP_SERVICE_URL` | ❌ | Varsayılan: `http://localhost:8001` |
@@ -159,6 +160,8 @@ POST   /api/contracts/{id}/reject       TC Kimlik doğrulama + idempotency
 GET    /api/contracts/pending-approval
 GET    /api/contracts/stats
 GET    /api/contracts/{id}/explanation
+GET    /api/contracts/{id}/pdf-confirm   PDF öncesi doğrulama (taraflar, tutar, uyarılar)
+GET    /api/contracts/{id}/verify?hash=  Belge parmak izi doğrulama → { valid, contractId, message }
 ```
 
 **Sözleşme oluşturma gövdesi:**
@@ -249,17 +252,120 @@ Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
 
 ---
 
+## PDF Üretimi
+
+Tüm sözleşme ve dilekçe PDF'leri `PdfService` tarafından **openhtmltopdf + Apache PDFBox** ile üretilir.
+
+### Akış
+
+```
+GET /api/contracts/{id}/pdf-confirm
+    └── Taraflar, tutar, içerik önizlemesi, uyarılar döner (readyForPdf flag)
+        └── Frontend kullanıcıya onay dialogu gösterir
+
+GET /api/contracts/{id}/pdf   (kullanıcı onayından sonra)
+    ├── SHA-256 hash hesapla  (id|type|title|content|amount|owner|counterparty)
+    ├── Thymeleaf şablonu işle → HTML
+    ├── openhtmltopdf → ham PDF byte[]
+    └── Apache PDFBox → PDF metadata enjeksiyonu → son byte[]
+```
+
+### PDF İçeriği
+
+Her PDF'e eklenen standart öğeler:
+
+| Öğe | Açıklama |
+|-----|----------|
+| Sayfa numarası | "Sayfa X / Y" — her sayfanın sağ altında |
+| Belge parmak izi | SHA-256'nın ilk 16 karakteri — her sayfanın ortasında |
+| TASLAK filigranı | DRAFT durumundaki belgelerde diyagonal, soluk kırmızı |
+| Onay bloğu | APPROVED/COMPLETED belgelerde: durum, tarih, tam SHA-256 özeti |
+| PDF Metadata | Title, Author, Subject, Keywords, Creator, Producer, DocumentHash (PDFBox) |
+
+### PDF/A
+
+PDF/A-1b (ISO 19005) aktif — tüm belgeler arşiv standardına uygun üretilir.
+Font gömme openhtmltopdf tarafından otomatik yapılır; `useFastMode()` kaldırılmıştır.
+
+### Şablonlar
+
+8 sözleşme + 1 dilekçe şablonu `src/main/resources/templates/pdf/` altındadır.
+Paylaşılan CSS (`pdf/fragments/base.html`) sayfa düzeni, tipografi ve ortak bileşenleri tek yerden yönetir.
+
+---
+
 ## Güvenlik
 
-- **JWT** — 24 saatlik token, `jti` ile blacklist
+- **JWT** — 24 saatlik token, `jti` ile blacklist; `JWT_SECRET` set edilmezse uygulama başlamaz
 - **BCrypt** — Şifre hash (strength 10)
-- **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme)
-- **TC Kimlik** — Ham numara veritabanına kaydedilmez; `"123******01"` formatında maskelenir
-- **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli
+- **IDOR Koruması** — Her işlemde sahiplik doğrulaması (404 maskeleme); `ContractService.verifyOwnership()`
+- **TC Kimlik Şifreleme** — AES-256/ECB ile şifreli saklanır (`TcKimlikEncryptionService`). DB'ye plaintext asla yazılmaz. API response'larda her zaman maskeli (`123******01`) döner. Key: `TC_ENCRYPTION_KEY` env var.
+  - *ECB neden?* — Equality sorgusu (`findByTcKimlik`) için deterministic encryption şart. ECB'nin klasik pattern analizi zafiyeti çok bloklu plaintext'te oluşur; 11-byte TC Kimlik, PKCS5 padding sonrası daima tek AES bloğuna (16 byte) sığar, dolayısıyla blok tekrarı yapısal olarak imkansızdır.
+- **Onay Doğrulaması** — `counterpartyTcKimlik` varsa onaylayan kullanıcının `tcKimlik`'i eşleşmeli. Hem kullanıcı hem karşı taraf TC şifreli-şifreli karşılaştırılır.
 - **İdempotency** — Zaten sonuçlanmış sözleşmeye onay/red isteği `400 Bad Request` döner
-- **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz
+- **Kendi Kendine Onay** — Sözleşme sahibi kendi sözleşmesini onaylayamaz (`UnauthorizedException`)
 - **Disclaimer Kapısı** — Finalize için yasal uyarı kabul zorunlu
 - **Internal API Key** — Python servislere `X-Internal-API-Key` header
+- **Güvenlik Header'ları** — `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Strict-Transport-Security`
+- **Kullanıcı Tespiti Engeli** — Sözleşme oluştururken karşı tarafın sistemde kayıtlı olup olmadığı söylenmez. Bu, isim/TC üzerinden hesap enumeration'ı engeller.
+
+---
+
+## Karşı Taraf Geç Kayıt Akışı
+
+```
+Alice → sözleşme oluşturur, Bob'un TC'sini girer (Bob henüz kayıtlı değil)
+Alice → finalize eder → sözleşme PENDING olur, bildirim gönderilmeye çalışılır ama Bob yok → sessiz geçer
+Bob → uygulamaya kaydolur
+Bob → TC kimliğini doğrular  ← bu adım kritik
+     ↓
+VerificationService.notifyPendingContractsForNewUser()
+     ↓
+contracts tablosunda counterparty_tc_kimlik = Bob'un TC'si olan tüm PENDING sözleşmeler bulunur
+Bob'a her biri için bildirim gönderilir
+     ↓
+Bob getPendingApprovals() çağırır → sözleşmeler otomatik listelenir (TC eşleşmesi ile)
+```
+
+Bu akış sayesinde karşı taraf geç kayıt olsa bile hiçbir sözleşme kaybolmaz ve kullanıcıya "karşı taraf kayıtlı değil" gibi bilgi sızdırılmaz.
+
+---
+
+## Observability
+
+Her HTTP isteğine `X-Request-ID` atanır (`RequestIdFilter`). İstek dışarıdan geliyorsa mevcut değer korunur, yoksa UUID üretilir. Tüm Python servislerine WebClient üzerinden forward edilir.
+
+Log örneği:
+```
+10:42:13.450 INFO  [http-nio-8080-exec-1] [req-3fa2c1d8] ContractService - Sözleşme oluşturuldu id=42
+```
+
+Aynı `request_id`, nlp-server/graphrag-server/statistics-server loglarında da görünür.
+
+---
+
+## Testler
+
+```bash
+# Tüm testler
+mvn test
+
+# Sadece güvenlik testleri (IDOR + HTTP akış)
+mvn test -Dtest="ContractServiceSecurityTest,ContractFlowIT"
+```
+
+**ContractServiceSecurityTest** — IDOR koruması unit testleri (DB gerektirmez):
+- `getById` başka kullanıcı → 404
+- `update` başka kullanıcı → 404
+- `delete` başka kullanıcı → 404
+- `approve` kendi sözleşmesi → 401
+- `reject` kendi sözleşmesi → 401
+
+**ContractFlowIT** — HTTP katmanı entegrasyon testleri (MockMvc):
+- Token olmadan → 403
+- CRUD akışı → 201/200
+- IDOR → 404
+- X-Request-ID echo → response header'da
 
 ---
 
