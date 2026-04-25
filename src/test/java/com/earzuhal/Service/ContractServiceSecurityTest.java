@@ -39,6 +39,7 @@ class ContractServiceSecurityTest {
     @Mock ExplanationService explanationService;
     @Mock NotificationService notificationService;
     @Mock TcKimlikEncryptionService encryptionService;
+    @Mock StatisticsService statisticsService;
 
     private ContractService contractService;
 
@@ -47,7 +48,7 @@ class ContractServiceSecurityTest {
         contractService = new ContractService(
                 contractRepository, userRepository, verificationRepository,
                 userService, disclaimerService, explanationService,
-                notificationService, encryptionService, new ObjectMapper()
+                notificationService, encryptionService, statisticsService, new ObjectMapper()
         );
     }
 
