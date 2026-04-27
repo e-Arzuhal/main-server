@@ -1,6 +1,6 @@
 package com.earzuhal.controller;
 
-import com.earzuhal.Service.TokenBlacklistService;
+import com.earzuhal.service.TokenBlacklistService;
 import com.earzuhal.dto.auth.LoginRequest;
 import com.earzuhal.dto.auth.RegisterRequest;
 import com.earzuhal.dto.auth.AuthResponse;
@@ -12,8 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Auth Controller entegrasyon testi.
+ * Auth controller entegrasyon testi.
  *
  * Jüri kanıtları:
  *  ✓ Geçerli register 201 dönüyor
@@ -57,7 +57,7 @@ class AuthControllerIT {
         RegisterRequest req = new RegisterRequest("testuser", "test@kullanici.com", "sifre12345", "Test", "User");
 
         AuthResponse resp = AuthResponse.builder()
-                .token("jwt-token-xxx")
+                .accessToken("jwt-token-xxx")
                 .tokenType("Bearer")
                 .build();
         when(authService.register(any())).thenReturn(resp);
@@ -66,7 +66,7 @@ class AuthControllerIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.token").value("jwt-token-xxx"));
+                .andExpect(jsonPath("$.accessToken").value("jwt-token-xxx"));
     }
 
     @Test
@@ -135,7 +135,7 @@ class AuthControllerIT {
         LoginRequest req = new LoginRequest("testuser", "sifre12345");
 
         AuthResponse resp = AuthResponse.builder()
-                .token("jwt-login-token")
+                .accessToken("jwt-login-token")
                 .tokenType("Bearer")
                 .build();
         when(authService.login(any())).thenReturn(resp);
@@ -144,7 +144,7 @@ class AuthControllerIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt-login-token"))
+                .andExpect(jsonPath("$.accessToken").value("jwt-login-token"))
                 .andExpect(jsonPath("$.tokenType").value("Bearer"));
     }
 

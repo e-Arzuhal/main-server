@@ -1,10 +1,8 @@
 package com.earzuhal.controller;
 
-import com.earzuhal.Controller.VerificationController;
-import com.earzuhal.Service.VerificationService;
+import com.earzuhal.service.VerificationService;
 import com.earzuhal.dto.verification.VerificationRequest;
 import com.earzuhal.dto.verification.VerificationResponse;
-import com.earzuhal.exception.BadRequestException;
 import com.earzuhal.exception.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -12,8 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -28,7 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * Verification Controller entegrasyon testi.
+ * Verification controller entegrasyon testi.
  *
  * Jüri kanıtları:
  *  ✓ Geçerli TC ile kimlik doğrulama başarılı

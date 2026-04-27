@@ -1,8 +1,7 @@
 package com.earzuhal.controller;
 
-import com.earzuhal.Controller.ContractController;
-import com.earzuhal.Service.ContractService;
-import com.earzuhal.Service.PdfService;
+import com.earzuhal.service.ContractService;
+import com.earzuhal.service.PdfService;
 import com.earzuhal.Model.Contract;
 import com.earzuhal.Model.User;
 import com.earzuhal.dto.contract.ContractRequest;
@@ -15,8 +14,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;

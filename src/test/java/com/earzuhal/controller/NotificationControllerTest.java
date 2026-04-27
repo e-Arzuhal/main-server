@@ -1,6 +1,6 @@
 package com.earzuhal.controller;
 
-import com.earzuhal.Service.NotificationService;
+import com.earzuhal.service.NotificationService;
 import com.earzuhal.dto.notification.NotificationResponse;
 import com.earzuhal.dto.notification.RegisterDeviceTokenRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
