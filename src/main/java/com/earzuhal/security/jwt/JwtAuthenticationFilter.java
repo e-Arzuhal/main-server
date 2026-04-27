@@ -1,6 +1,6 @@
 package com.earzuhal.security.jwt;
 
-import com.earzuhal.Service.TokenBlacklistService;
+import com.earzuhal.service.TokenBlacklistService;
 import com.earzuhal.security.CustomUserDetailsService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -43,10 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = extractJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
-                // Blacklist kontrolü — revoke edilmiş token'lar reddedilir
+                // Blacklist kontrolü — revoke edilmiş token'lar reddedilir.
+                // Permit-all uçlarda sessizce devam etmek yerine 401 dön: çalıntı/iptal
+                // edilmiş bir token taşıyan istek hiçbir kaynağa erişemesin.
                 String jti = jwtTokenProvider.getJtiFromToken(jwt);
                 if (tokenBlacklistService.isRevoked(jti)) {
-                    filterChain.doFilter(request, response);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Token has been revoked\"}");
                     return;
                 }
 

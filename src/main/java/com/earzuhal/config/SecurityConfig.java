@@ -98,15 +98,23 @@ public class SecurityConfig {
                         // User endpoints
                         .requestMatchers("/api/users/me", "/api/users/me/**").authenticated()
 
+                        // Disclaimer endpoints — controller okuma/kayıt için kimlik
+                        // doğrulanmış kullanıcı bekliyor; permitAll altında anonim
+                        // istekler "anonymousUser" adıyla işlem yapardı.
+                        .requestMatchers("/api/disclaimer/**").authenticated()
+
                         // Admin endpoints
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
-                        .requestMatchers("/api/disclaimer/**").permitAll()
 
                         // All other endpoints require authentication
                         .anyRequest().authenticated();
                 })
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(authRateLimitFilter, JwtAuthenticationFilter.class)
+                // Spring Security 7'de addFilterBefore yalnızca kayıtlı (Spring Security'nin
+                // tanıdığı) filtre sınıflarını referans alabilir. İki özel filtreyi de
+                // UsernamePasswordAuthenticationFilter'dan önce ekliyoruz; ekleme sırası
+                // çalışma sırasıdır: önce rate-limit, ardından JWT doğrulaması.
+                .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
