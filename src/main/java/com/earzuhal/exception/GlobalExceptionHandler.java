@@ -86,7 +86,7 @@ public class GlobalExceptionHandler {
             BadCredentialsException ex, WebRequest request) {
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.UNAUTHORIZED.value(),
-                "Invalid username or password",
+                "Kullanıcı adı veya şifre hatalı.",
                 OffsetDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
@@ -98,7 +98,7 @@ public class GlobalExceptionHandler {
             AccessDeniedException ex, WebRequest request) {
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.FORBIDDEN.value(),
-                "You don't have permission to access this resource",
+                "Bu işlem için yetkiniz bulunmamaktadır.",
                 OffsetDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
@@ -117,7 +117,7 @@ public class GlobalExceptionHandler {
 
         ValidationErrorResponse errorResponse = new ValidationErrorResponse(
                 HttpStatus.BAD_REQUEST.value(),
-                "Validation failed",
+                "Doğrulama başarısız oldu.",
                 OffsetDateTime.now(),
                 request.getDescription(false).replace("uri=", ""),
                 errors
@@ -131,7 +131,7 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception on {}: {}", request.getDescription(false), ex.getMessage(), ex);
         ErrorResponse errorResponse = new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
-                "An unexpected error occurred",
+                "Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
                 OffsetDateTime.now(),
                 request.getDescription(false).replace("uri=", "")
         );
