@@ -36,10 +36,12 @@ public final class ContractTypeMapping {
     );
 
     public static String toTurkish(String englishType) {
+        if (englishType == null) return "diger";
         return TO_TURKISH.getOrDefault(englishType, "diger");
     }
 
     public static String toEnglish(String turkishType) {
+        if (turkishType == null) return "OTHER";
         return TO_ENGLISH.getOrDefault(turkishType, "OTHER");
     }
 }
