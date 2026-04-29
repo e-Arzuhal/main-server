@@ -129,6 +129,12 @@
 			<artifactId>spring-boot-starter-thymeleaf</artifactId>
 		</dependency>
 
+		<!-- Mail (şifre sıfırlama, 2FA, abonelik bildirimleri) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- PDF Generation: openhtmltopdf -->
 		<dependency>
 			<groupId>com.openhtmltopdf</groupId>
