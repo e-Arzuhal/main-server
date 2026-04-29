@@ -20,4 +20,6 @@ public interface ContractRepository extends JpaRepository<Contract, Long> {
     long countByUserId(Long userId);
 
     List<Contract> findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(String counterpartyTcKimlik, String status);
+
+    List<Contract> findByCounterpartyTcKimlikOrderByCreatedAtDesc(String counterpartyTcKimlik);
 }

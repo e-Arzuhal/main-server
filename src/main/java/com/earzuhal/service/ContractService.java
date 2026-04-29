@@ -23,8 +23,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -99,23 +102,34 @@ public class ContractService {
 
     public List<ContractResponse> getAllByUser(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
-        return contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
-                .stream()
-                .map(this::convertToResponse)
+
+        // Sahip olunan sözleşmeler + karşı taraf olarak yer aldığı sözleşmeler
+        Map<Long, Contract> merged = new LinkedHashMap<>();
+        contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .forEach(c -> merged.put(c.getId(), c));
+
+        if (user.getTcKimlik() != null) {
+            contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                    .forEach(c -> merged.putIfAbsent(c.getId(), c));
+        }
+
+        return merged.values().stream()
+                .map(c -> convertToResponse(c, user))
                 .collect(Collectors.toList());
     }
 
     public ContractResponse getById(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
-        verifyOwnership(contract, username);
-        return convertToResponse(contract);
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        verifyReadAccess(contract, viewer);
+        return convertToResponse(contract, viewer);
     }
 
     /** PDF üretimi için tam entity döndürür (user lazy-load dahil) */
     public Contract getEntityById(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
         return contract;
     }
@@ -126,8 +140,9 @@ public class ContractService {
      */
     public ContractExplanationResponse getExplanation(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
-        verifyOwnership(contract, username);
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        verifyReadAccess(contract, viewer);
 
         List<ClauseExplanationItem> clauses = Collections.emptyList();
         if (contract.getClauseExplanations() != null && !contract.getClauseExplanations().isBlank()) {
@@ -152,8 +167,13 @@ public class ContractService {
     @Transactional
     public ContractResponse update(Long id, ContractRequest request, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
+
+        // Onaylanmış / reddedilmiş sözleşmeler düzenlenemez
+        if ("APPROVED".equals(contract.getStatus()) || "REJECTED".equals(contract.getStatus())) {
+            throw new BadRequestException("Sonuçlandırılmış sözleşmeler düzenlenemez.");
+        }
 
         if (request.getTitle() != null) contract.setTitle(request.getTitle());
         if (request.getType() != null) contract.setType(request.getType());
@@ -166,14 +186,19 @@ public class ContractService {
         contract.setUpdatedAt(OffsetDateTime.now());
 
         Contract updated = contractRepository.save(contract);
-        return convertToResponse(updated);
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        return convertToResponse(updated, viewer);
     }
 
     @Transactional
     public void delete(Long id, String username) {
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
+        // Onaylanmış sözleşmeler silinemez (yasal kayıt)
+        if ("APPROVED".equals(contract.getStatus())) {
+            throw new BadRequestException("Onaylanmış sözleşmeler silinemez.");
+        }
         contractRepository.delete(contract);
     }
 
@@ -183,7 +208,7 @@ public class ContractService {
             throw new BadRequestException("Sözleşme onaya gönderilebilmesi için yasal uyarıyı kabul etmeniz gerekmektedir");
         }
         Contract contract = contractRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Contract not found with id: " + id));
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
         contract.setStatus("PENDING");
         contract.setUpdatedAt(OffsetDateTime.now());
@@ -194,13 +219,14 @@ public class ContractService {
                 .ifPresent(counterparty -> notificationService.notifyUser(
                     counterparty,
                     "CONTRACT_PENDING_APPROVAL",
-                    "Yeni onay bekleyen sozlesme",
-                    "" + contract.getTitle() + " sozlesmesi onayinizi bekliyor.",
+                    "Yeni onay bekleyen sözleşme",
+                    "" + contract.getTitle() + " sözleşmesi onayınızı bekliyor.",
                     contract.getId()
                 ));
         }
 
-        return convertToResponse(updated);
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        return convertToResponse(updated, viewer);
     }
 
     public List<ContractResponse> getPendingApprovals(String username) {
@@ -213,7 +239,7 @@ public class ContractService {
         return contractRepository
                 .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(user.getTcKimlik(), "PENDING")
                 .stream()
-                .map(this::convertToResponse)
+                .map(c -> convertToResponse(c, user))
                 .collect(Collectors.toList());
     }
 
@@ -259,15 +285,15 @@ public class ContractService {
         notificationService.notifyUser(
             contract.getUser(),
             "CONTRACT_APPROVED",
-            "Sozlesme onaylandi",
-            "" + contract.getTitle() + " sozlesmeniz karsi taraf tarafindan onaylandi.",
+            "Sözleşme onaylandı",
+            "" + contract.getTitle() + " sözleşmeniz karşı taraf tarafından onaylandı.",
             contract.getId()
         );
 
         statisticsService.recordOutcomeAsync(
             ContractTypeMapping.toTurkish(contract.getType()), true);
 
-        return convertToResponse(saved);
+        return convertToResponse(saved, approver);
     }
 
     @Transactional
@@ -298,15 +324,15 @@ public class ContractService {
         notificationService.notifyUser(
             contract.getUser(),
             "CONTRACT_REJECTED",
-            "Sozlesme reddedildi",
-            "" + contract.getTitle() + " sozlesmeniz karsi taraf tarafindan reddedildi.",
+            "Sözleşme reddedildi",
+            "" + contract.getTitle() + " sözleşmeniz karşı taraf tarafından reddedildi.",
             contract.getId()
         );
 
         statisticsService.recordOutcomeAsync(
             ContractTypeMapping.toTurkish(contract.getType()), false);
 
-        return convertToResponse(saved);
+        return convertToResponse(saved, approver);
     }
 
     /**
@@ -420,9 +446,27 @@ public class ContractService {
         }
     }
 
+    /**
+     * Okuma erişimi: ya sahip ya da karşı taraf (TC eşleşmesi). Her ikisi de değilse 404.
+     */
+    private void verifyReadAccess(Contract contract, User viewer) {
+        boolean isOwner = contract.getUser().getUsername().equals(viewer.getUsername());
+        boolean isCounterparty = viewer.getTcKimlik() != null
+                && contract.getCounterpartyTcKimlik() != null
+                && viewer.getTcKimlik().equals(contract.getCounterpartyTcKimlik());
+        if (!isOwner && !isCounterparty) {
+            throw new ResourceNotFoundException("Sözleşme bulunamadı, id: " + contract.getId());
+        }
+    }
+
     private ContractResponse convertToResponse(Contract contract) {
+        return convertToResponse(contract, null);
+    }
+
+    private ContractResponse convertToResponse(Contract contract, User viewer) {
         // Karşı taraf TC: API response'da her zaman maskeli göster (123******01)
         String maskedCounterpartyTc = encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik());
+        boolean isOwner = viewer == null || contract.getUser().getUsername().equals(viewer.getUsername());
         return ContractResponse.builder()
                 .id(contract.getId())
                 .title(contract.getTitle())
@@ -435,6 +479,7 @@ public class ContractService {
                 .counterpartyTcKimlik(maskedCounterpartyTc)
                 .userId(contract.getUser().getId())
                 .ownerUsername(contract.getUser().getUsername())
+                .viewerIsOwner(isOwner)
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())
                 .build();
