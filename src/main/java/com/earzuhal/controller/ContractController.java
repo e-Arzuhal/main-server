@@ -6,6 +6,7 @@ import com.earzuhal.service.PdfService;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.ContractUpdateRequest;
 import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.dto.explanation.ContractExplanationResponse;
 import jakarta.validation.Valid;
@@ -53,7 +54,7 @@ public class ContractController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ContractResponse> update(@PathVariable Long id,
-                                                    @Valid @RequestBody ContractRequest request) {
+                                                    @Valid @RequestBody ContractUpdateRequest request) {
         ContractResponse contract = contractService.update(id, request, getCurrentUsername());
         return ResponseEntity.ok(contract);
     }
@@ -106,6 +107,16 @@ public class ContractController {
         ContractExplanationResponse explanation =
                 contractService.getExplanation(id, getCurrentUsername());
         return ResponseEntity.ok(explanation);
+    }
+
+    /**
+     * Sözleşme tipine göre GraphRAG'den zorunlu/opsiyonel madde rehberini döner.
+     * Önizleme/oluşturma ekranında "bu sözleşmede hangi maddeler bulunmalı" panelinde gösterilir.
+     * GET /api/contracts/{id}/required-clauses
+     */
+    @GetMapping("/{id}/required-clauses")
+    public ResponseEntity<java.util.Map<String, Object>> getRequiredClauses(@PathVariable Long id) {
+        return ResponseEntity.ok(contractService.getRequiredClauses(id, getCurrentUsername()));
     }
 
     /**

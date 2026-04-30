@@ -63,13 +63,39 @@ public class ChatbotService {
         ChatIntentResponse nlpResult = nlpService.classifyIntent(request.getMessage());
         log.info("NLP intent: {} (güven: {})", nlpResult.getIntent(), nlpResult.getConfidence());
 
-        // 2. Kullanıcının aktif sözleşmesini bul (JWT'den username)
-        Contract activeContract = findActiveContract(username);
+        // 2. Sözleşme seçimi
+        Contract activeContract = resolveContract(username, request.getContractId());
+
+        // Intent sözleşme bağlamı gerektirip kullanıcının birden fazla sözleşmesi varsa
+        // ve istek belirli bir contractId taşımıyorsa, kullanıcıya seçim yaptır.
+        boolean intentNeedsContract = GRAPHRAG_INTENTS.contains(nlpResult.getIntent());
+        if (intentNeedsContract && request.getContractId() == null) {
+            List<Contract> selectable = listSelectableContracts(username);
+            if (selectable.size() > 1) {
+                ChatResponse selection = new ChatResponse(
+                        "Hangi sözleşme hakkında konuşmak istediğinizi seçin. Cevabımı yalnızca seçtiğiniz sözleşmenin verileri üzerinden vereceğim.",
+                        List.of()
+                );
+                selection.setRequiresContractSelection(true);
+                selection.setContractOptions(selectable.stream()
+                        .map(c -> new ChatResponse.ContractOption(
+                                c.getId(),
+                                c.getTitle(),
+                                c.getType(),
+                                c.getStatus()))
+                        .toList());
+                return selection;
+            }
+            if (selectable.size() == 1) {
+                activeContract = selectable.get(0);
+            }
+        }
+
         String contractContext = buildContractContext(activeContract);
 
         // 3. Intent'e göre GraphRAG bağlamı al (koşullu)
         String graphRagContext = null;
-        if (GRAPHRAG_INTENTS.contains(nlpResult.getIntent()) && activeContract != null) {
+        if (intentNeedsContract && activeContract != null) {
             graphRagContext = fetchGraphRagContext(activeContract);
         }
 
@@ -87,6 +113,51 @@ public class ChatbotService {
                 .build();
 
         return forwardToChatbot(enriched);
+    }
+
+    /**
+     * Kullanıcının açıkça istediği sözleşmeyi getirir; yoksa en son DRAFT/PENDING'i
+     * fallback olarak kullanır. Erişim yetkisi: sahip ya da karşı taraf.
+     */
+    private Contract resolveContract(String username, Long contractId) {
+        if (contractId != null) {
+            try {
+                User viewer = userService.getUserByUsernameOrEmail(username);
+                Contract c = contractRepository.findById(contractId).orElse(null);
+                if (c == null) return null;
+                boolean isOwner = c.getUser().getUsername().equals(viewer.getUsername());
+                boolean isCounterparty = viewer.getTcKimlik() != null
+                        && c.getCounterpartyTcKimlik() != null
+                        && viewer.getTcKimlik().equals(c.getCounterpartyTcKimlik());
+                if (isOwner || isCounterparty) return c;
+                log.warn("Chatbot: kullanıcı {} sözleşme {} üzerinde yetkili değil", username, contractId);
+                return null;
+            } catch (Exception e) {
+                log.warn("Chatbot resolveContract hatası: {}", e.getMessage());
+                return null;
+            }
+        }
+        return findActiveContract(username);
+    }
+
+    /** Kullanıcının chatbot'ta seçebileceği sözleşmeler — son 10 sözleşme (DRAFT/PENDING/APPROVED). */
+    private List<Contract> listSelectableContracts(String username) {
+        try {
+            User user = userService.getUserByUsernameOrEmail(username);
+            return contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
+                    .filter(c -> {
+                        String s = c.getStatus();
+                        return s == null
+                                || "DRAFT".equals(s)
+                                || "PENDING".equals(s)
+                                || "APPROVED".equals(s);
+                    })
+                    .limit(10)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("listSelectableContracts hatası: {}", e.getMessage());
+            return List.of();
+        }
     }
 
     /** Kullanıcının son DRAFT veya PENDING sözleşmesini bulur. */

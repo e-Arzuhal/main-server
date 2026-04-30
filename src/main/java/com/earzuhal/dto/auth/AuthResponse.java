@@ -20,4 +20,8 @@ public class AuthResponse {
     private Long expiresIn;
 
     private UserResponse userInfo;
+
+    /** Doğru olduğunda istemci 2FA kodunu sorup login isteğini code ile tekrarlamalı. */
+    @Builder.Default
+    private Boolean requires2fa = false;
 }

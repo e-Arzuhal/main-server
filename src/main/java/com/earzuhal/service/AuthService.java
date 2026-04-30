@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.Optional;
 
 @Service
@@ -106,6 +105,7 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -114,23 +114,42 @@ public class AuthService {
                 )
         );
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        String token = jwtTokenProvider.generateToken(authentication);
-
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
         User user = userService.getUserByUsernameOrEmail(userDetails.getUsername());
+
+        // Kullanıcı 2FA'yı açmışsa, kod sağlanmadan token verilmez.
+        boolean twoFa = Boolean.TRUE.equals(user.getTwoFactorEnabled());
+        if (twoFa) {
+            String submittedCode = loginRequest.getTwoFactorCode();
+            if (submittedCode == null || submittedCode.isBlank()) {
+                // Kod isteyen 1. adım: e-postaya 6 haneli kod gönder, JWT verme.
+                send2faCode(user.getUsername(), "login");
+                return AuthResponse.builder()
+                        .accessToken(null)
+                        .tokenType("Bearer")
+                        .expiresIn(0L)
+                        .userInfo(userService.convertToResponse(user))
+                        .requires2fa(true)
+                        .build();
+            }
+            // 2. adım: kullanıcının "login" amaçlı son kodunu doğrula
+            verify2faCode(user.getUsername(), submittedCode, "login");
+        }
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        String token = jwtTokenProvider.generateToken(authentication);
 
         return AuthResponse.builder()
                 .accessToken(token)
                 .tokenType("Bearer")
                 .expiresIn(jwtConfig.getExpirationMs())
                 .userInfo(userService.convertToResponse(user))
+                .requires2fa(false)
                 .build();
     }
 
     /**
-     * Şifre sıfırlama bağlantısını e-posta ile gönderir.
+     * Şifre sıfırlama için 6 haneli kodu kullanıcının e-posta adresine gönderir.
      * Kullanıcı bulunamazsa bile başarılı dönüyoruz (e-posta enumerasyonunu engellemek için).
      */
     @Transactional
@@ -147,43 +166,56 @@ public class AuthService {
         // Kullanıcının önceki tokenlarını geçersiz kıl
         passwordResetTokenRepository.invalidateAllForUser(user.getId());
 
-        String token = generateUrlSafeToken(48);
+        String code = String.format("%06d", RNG.nextInt(1_000_000));
         PasswordResetToken prt = new PasswordResetToken();
-        prt.setToken(token);
+        prt.setToken(code);
         prt.setUserId(user.getId());
-        prt.setExpiresAt(OffsetDateTime.now().plusHours(1));
+        prt.setExpiresAt(OffsetDateTime.now().plusMinutes(15));
         prt.setUsed(false);
         prt.setCreatedAt(OffsetDateTime.now());
         passwordResetTokenRepository.save(prt);
 
-        String resetUrl = appPublicUrl + "/reset-password?token=" + token;
         String body = "Merhaba " + (user.getFirstName() != null ? user.getFirstName() : user.getUsername()) + ",\n\n"
-                + "Şifrenizi sıfırlamak için aşağıdaki bağlantıya tıklayın (1 saat geçerli):\n\n"
-                + resetUrl + "\n\n"
+                + "Şifre sıfırlama kodunuz: " + code + "\n\n"
+                + "Bu kod 15 dakika boyunca geçerlidir. Kodu kimseyle paylaşmayın.\n"
                 + "Bu isteği siz yapmadıysanız bu e-postayı görmezden gelebilirsiniz.\n\n"
                 + "e-Arzuhal Ekibi";
-        mailService.send(user.getEmail(), "e-Arzuhal — Şifre Sıfırlama", body);
+        mailService.send(user.getEmail(), "e-Arzuhal — Şifre Sıfırlama Kodu", body);
     }
 
     @Transactional
     public void resetPassword(String token, String newPassword) {
-        if (token == null || token.isBlank()) {
-            throw new BadRequestException("Geçersiz veya süresi dolmuş bağlantı.");
+        resetPassword(null, token, newPassword);
+    }
+
+    /**
+     * E-posta + 6 haneli kod ile şifre sıfırlama. Eski "token" akışı için email null bırakılabilir;
+     * o durumda sadece kod ile eşleşen aktif kayıt aranır.
+     */
+    @Transactional
+    public void resetPassword(String email, String code, String newPassword) {
+        if (code == null || code.isBlank()) {
+            throw new BadRequestException("Geçersiz veya süresi dolmuş kod.");
         }
         if (newPassword == null || newPassword.length() < 6) {
             throw new BadRequestException("Şifre en az 6 karakter olmalıdır.");
         }
 
-        PasswordResetToken prt = passwordResetTokenRepository.findByToken(token)
-                .orElseThrow(() -> new BadRequestException("Geçersiz veya süresi dolmuş bağlantı."));
+        PasswordResetToken prt = passwordResetTokenRepository.findByToken(code.trim())
+                .orElseThrow(() -> new BadRequestException("Geçersiz veya süresi dolmuş kod."));
 
         if (Boolean.TRUE.equals(prt.getUsed()) || prt.getExpiresAt().isBefore(OffsetDateTime.now())) {
-            throw new BadRequestException("Geçersiz veya süresi dolmuş bağlantı.");
+            throw new BadRequestException("Geçersiz veya süresi dolmuş kod.");
         }
 
         User user = userRepository.findById(prt.getUserId())
                 .stream().findFirst()
                 .orElseThrow(() -> new BadRequestException("Hesap bulunamadı."));
+
+        if (email != null && !email.isBlank()
+                && !email.trim().equalsIgnoreCase(user.getEmail())) {
+            throw new BadRequestException("Geçersiz veya süresi dolmuş kod.");
+        }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(OffsetDateTime.now());
@@ -192,7 +224,6 @@ public class AuthService {
         prt.setUsed(true);
         passwordResetTokenRepository.save(prt);
 
-        // Bilgilendirme maili
         mailService.send(user.getEmail(), "e-Arzuhal — Şifreniz Değiştirildi",
                 "Merhaba,\n\nHesabınızın şifresi az önce değiştirildi. Bu işlemi siz yapmadıysanız lütfen hemen destek ekibimizle iletişime geçin.\n\ne-Arzuhal Ekibi");
     }
@@ -242,11 +273,18 @@ public class AuthService {
 
         tfc.setUsed(true);
         twoFactorCodeRepository.save(tfc);
+
+        // Eylem türüne göre kullanıcı bayrağını güncelle
+        if ("enable".equalsIgnoreCase(safePurpose)) {
+            user.setTwoFactorEnabled(true);
+            user.setUpdatedAt(OffsetDateTime.now());
+            userRepository.save(user);
+        } else if ("disable".equalsIgnoreCase(safePurpose)) {
+            user.setTwoFactorEnabled(false);
+            user.setUpdatedAt(OffsetDateTime.now());
+            userRepository.save(user);
+        }
+        // "login" amacı: yalnızca kodu kullanılmış olarak işaretle, bayrağı değiştirme.
     }
 
-    private static String generateUrlSafeToken(int byteLen) {
-        byte[] buf = new byte[byteLen];
-        RNG.nextBytes(buf);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
-    }
 }

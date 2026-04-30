@@ -82,10 +82,17 @@ public class AuthController {
         ));
     }
 
-    /** Sıfırlama tokenı ile yeni şifre belirler. */
+    /**
+     * Sıfırlama kodu (e-posta ile gönderilen 6 haneli kod) ile yeni şifre belirler.
+     * Geriye uyumluluk için eski "token" alanı da kabul edilir.
+     */
     @PostMapping("/reset-password")
     public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        authService.resetPassword(request.getToken(), request.getNewPassword());
+        String code = request.getCode();
+        if (code == null || code.isBlank()) {
+            code = request.getToken();
+        }
+        authService.resetPassword(request.getEmail(), code, request.getNewPassword());
         return ResponseEntity.ok(Map.of("message", "Şifreniz başarıyla güncellendi."));
     }
 

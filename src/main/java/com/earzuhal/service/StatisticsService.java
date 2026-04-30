@@ -41,15 +41,27 @@ public class StatisticsService {
      * @param completenessScore Tamamlanma skoru (0–100)
      */
     public void recordAsync(String contractType, GraphRagResponse graphRagResult, Double completenessScore) {
+        // NLP sınıflandırması yapılamamışsa istatistik gönderme; statistics-server
+        // boş contract_type'ı 422 ile reddediyor.
+        if (contractType == null || contractType.isBlank()) {
+            log.debug("Statistics kaydı atlandı: contract_type boş");
+            return;
+        }
         List<String> features = extractFeatures(graphRagResult);
         List<Map<String, Object>> clauseData = buildClauseData(graphRagResult);
         int optionalOffered = extractOptionalOfferedCount(graphRagResult);
+
+        // Tamamlanma skoru 0–100 aralığında olmalı; sınır dışıysa kırp.
+        double normalizedCompleteness = 0.0;
+        if (completenessScore != null) {
+            normalizedCompleteness = Math.max(0.0, Math.min(100.0, completenessScore));
+        }
 
         Map<String, Object> body = new HashMap<>();
         body.put("contract_type", contractType);
         body.put("features", features);
         body.put("fields", Map.of());
-        body.put("completeness_score", completenessScore != null ? completenessScore : 0.0);
+        body.put("completeness_score", normalizedCompleteness);
         body.put("clause_data", clauseData);
         body.put("optional_clauses_offered", optionalOffered);
         body.put("optional_clauses_selected", 0);
@@ -77,6 +89,10 @@ public class StatisticsService {
      * @param approved      true → onaylandı, false → reddedildi
      */
     public void recordOutcomeAsync(String contractType, boolean approved) {
+        if (contractType == null || contractType.isBlank()) {
+            log.debug("Statistics outcome kaydı atlandı: contract_type boş");
+            return;
+        }
         webClient.post()
                 .uri("/stats/{type}/mark-outcome", contractType)
                 .bodyValue(java.util.Map.of("approved", approved))

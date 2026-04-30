@@ -57,6 +57,14 @@ public class VerificationService {
             throw new BadRequestException("Kimlik doğrulaması zaten yapılmış. TC Kimlik numarası değiştirilemez.");
         }
 
+        // Kayıttaki ad-soyad ile doğrulamada girilen ad-soyad birebir aynı olmalı.
+        if (!normalizeName(user.getFirstName()).equals(normalizeName(request.getFirstName()))
+                || !normalizeName(user.getLastName()).equals(normalizeName(request.getLastName()))) {
+            throw new BadRequestException(
+                    "Girilen ad ve soyad, hesabınıza kayıtlı ad-soyad ile eşleşmiyor. " +
+                    "Lütfen kayıt sırasında kullandığınız ad ve soyadı girin.");
+        }
+
         // Varsa mevcut kaydı güncelle, yoksa yeni oluştur
         Optional<IdentityVerification> existing = verificationRepository.findByUserId(user.getId());
         IdentityVerification verification = existing.orElse(new IdentityVerification());
@@ -180,5 +188,22 @@ public class VerificationService {
     /** "12345678901" → "123******01" */
     private String maskTcNo(String tcNo) {
         return tcNo.substring(0, 3) + "******" + tcNo.substring(9);
+    }
+
+    /**
+     * Türkçe ad/soyad eşitlik karşılaştırması için normalleştirme:
+     * trim, küçült, çoklu boşluğu sadeleştir, Türkçe karakter farklarını kaldır.
+     */
+    private static String normalizeName(String s) {
+        if (s == null) return "";
+        String lower = s.trim().toLowerCase(java.util.Locale.forLanguageTag("tr"))
+                .replaceAll("\\s+", " ");
+        return lower
+                .replace('ı', 'i').replace('İ', 'i')
+                .replace('ş', 's').replace('Ş', 's')
+                .replace('ç', 'c').replace('Ç', 'c')
+                .replace('ğ', 'g').replace('Ğ', 'g')
+                .replace('ö', 'o').replace('Ö', 'o')
+                .replace('ü', 'u').replace('Ü', 'u');
     }
 }

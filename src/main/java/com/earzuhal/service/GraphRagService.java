@@ -58,6 +58,31 @@ public class GraphRagService {
         }
     }
 
+    /**
+     * GraphRAG'den belirli bir sözleşme tipinin tam graf yapısını döner —
+     * zorunlu/opsiyonel maddeler ve ilgili kanun maddeleri dahil.
+     * GET /api/v1/legal-analysis/contract-graph/{contract_type}
+     */
+    public Map<String, Object> getContractGraph(String contractType) {
+        log.info("GraphRAG contract-graph isteği: tip={}", contractType);
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = webClient.get()
+                    .uri("/api/v1/legal-analysis/contract-graph/{type}", contractType)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+            return result;
+        } catch (WebClientResponseException e) {
+            log.warn("GraphRAG contract-graph başarısız: {} - {}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
+            return Map.of();
+        } catch (Exception e) {
+            log.warn("GraphRAG contract-graph erişilemedi: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
     /** GraphRAG erişilemezse analiz adımını atlatmak için minimal geçerli yanıt. */
     private GraphRagResponse buildFallbackResponse(String contractType) {
         GraphRagResponse resp = new GraphRagResponse();
