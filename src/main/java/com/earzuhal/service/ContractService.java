@@ -9,6 +9,7 @@ import com.earzuhal.dto.analysis.ContractTypeMapping;
 import com.earzuhal.dto.contract.ContractRequest;
 import com.earzuhal.dto.contract.ContractResponse;
 import com.earzuhal.dto.contract.ContractStatsResponse;
+import com.earzuhal.dto.contract.ContractUpdateRequest;
 import com.earzuhal.dto.contract.PdfConfirmResponse;
 import com.earzuhal.dto.explanation.ClauseExplanationItem;
 import com.earzuhal.dto.explanation.ContractExplanationResponse;
@@ -46,6 +47,7 @@ public class ContractService {
 
     private final TcKimlikEncryptionService encryptionService;
     private final StatisticsService statisticsService;
+    private final GraphRagService graphRagService;
 
     public ContractService(ContractRepository contractRepository, UserRepository userRepository,
                            IdentityVerificationRepository verificationRepository,
@@ -54,6 +56,7 @@ public class ContractService {
                            NotificationService notificationService,
                            TcKimlikEncryptionService encryptionService,
                            StatisticsService statisticsService,
+                           GraphRagService graphRagService,
                            ObjectMapper objectMapper) {
         this.contractRepository = contractRepository;
         this.userRepository = userRepository;
@@ -64,12 +67,70 @@ public class ContractService {
         this.notificationService = notificationService;
         this.encryptionService = encryptionService;
         this.statisticsService = statisticsService;
+        this.graphRagService = graphRagService;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Sözleşmenin türüne göre GraphRAG'den zorunlu/opsiyonel madde listesini döner.
+     * UI önizleme ekranında "bu sözleşmede hangi maddeler bulunmalı" listesi için kullanılır.
+     */
+    public Map<String, Object> getRequiredClauses(Long contractId, String username) {
+        Contract contract = contractRepository.findById(contractId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + contractId));
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        verifyReadAccess(contract, viewer);
+
+        String englishType = contract.getType();
+        String turkishType = com.earzuhal.dto.analysis.ContractTypeMapping.toTurkish(englishType);
+        Map<String, Object> graph = graphRagService.getContractGraph(turkishType);
+
+        if (graph == null || graph.isEmpty()) {
+            return Map.of(
+                    "contractId", contractId,
+                    "contractType", englishType,
+                    "displayName", typeLabelTr(englishType),
+                    "mandatoryClauses", List.of(),
+                    "optionalClauses", List.of(),
+                    "lawArticles", List.of(),
+                    "available", false,
+                    "message", "Madde rehberi şu anda erişilemiyor."
+            );
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("contractId", contractId);
+        result.put("contractType", englishType);
+        result.put("displayName", graph.getOrDefault("display_name", typeLabelTr(englishType)));
+        result.put("mandatoryClauses", graph.getOrDefault("mandatory_clauses", List.of()));
+        result.put("optionalClauses", graph.getOrDefault("optional_clauses", List.of()));
+        result.put("lawArticles", graph.getOrDefault("law_articles", List.of()));
+        result.put("relatedRisks", graph.getOrDefault("related_risks", List.of()));
+        result.put("available", true);
+        return result;
     }
 
     @Transactional
     public ContractResponse create(ContractRequest request, String username) {
         User user = userService.getUserByUsernameOrEmail(username);
+
+        String encryptedCpTc = encryptionService.encrypt(request.getCounterpartyTcKimlik());
+
+        // Idempotency: aynı kullanıcının son 2 dakika içinde aynı içerik + karşı taraf TC ile
+        // oluşturduğu DRAFT sözleşme varsa onu döndür (çift POST / React StrictMode korumaları).
+        OffsetDateTime since = OffsetDateTime.now().minusMinutes(2);
+        List<Contract> recent = contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId());
+        for (Contract existing : recent) {
+            if (!"DRAFT".equals(existing.getStatus())) continue;
+            if (existing.getCreatedAt() == null || existing.getCreatedAt().isBefore(since)) continue;
+            if (sameOrEmpty(existing.getContent(), request.getContent())
+                    && sameOrEmpty(existing.getCounterpartyTcKimlik(), encryptedCpTc)
+                    && sameOrEmpty(existing.getTitle(), request.getTitle())) {
+                log.info("Aynı içerikli yeni DRAFT sözleşme tespit edildi (id={}); mevcut kayıt döndürülüyor.",
+                        existing.getId());
+                return convertToResponse(existing, user);
+            }
+        }
 
         Contract contract = new Contract();
         contract.setTitle(request.getTitle());
@@ -79,7 +140,7 @@ public class ContractService {
         contract.setCounterpartyName(request.getCounterpartyName());
         contract.setCounterpartyRole(request.getCounterpartyRole());
         // Karşı taraf TC Kimlik şifreli saklanır
-        contract.setCounterpartyTcKimlik(encryptionService.encrypt(request.getCounterpartyTcKimlik()));
+        contract.setCounterpartyTcKimlik(encryptedCpTc);
         contract.setStatus("DRAFT");
         contract.setUser(user);
         contract.setCreatedAt(OffsetDateTime.now());
@@ -98,6 +159,13 @@ public class ContractService {
 
         Contract saved = contractRepository.save(contract);
         return convertToResponse(saved);
+    }
+
+    private static boolean sameOrEmpty(String a, String b) {
+        if (a == null && b == null) return true;
+        if (a == null) return b.isEmpty();
+        if (b == null) return a.isEmpty();
+        return a.equals(b);
     }
 
     public List<ContractResponse> getAllByUser(String username) {
@@ -126,11 +194,12 @@ public class ContractService {
         return convertToResponse(contract, viewer);
     }
 
-    /** PDF üretimi için tam entity döndürür (user lazy-load dahil) */
+    /** PDF üretimi için tam entity döndürür (user lazy-load dahil). Sahip ya da karşı taraf erişebilir. */
     public Contract getEntityById(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
-        verifyOwnership(contract, username);
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        verifyReadAccess(contract, viewer);
         return contract;
     }
 
@@ -165,7 +234,7 @@ public class ContractService {
     }
 
     @Transactional
-    public ContractResponse update(Long id, ContractRequest request, String username) {
+    public ContractResponse update(Long id, ContractUpdateRequest request, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
@@ -245,15 +314,30 @@ public class ContractService {
 
     public ContractStatsResponse getStats(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
-        Long userId = user.getId();
+
+        // Sahip olunan + karşı taraf olunan tüm sözleşmeler — id'ye göre tekilleştir
+        Map<Long, Contract> all = new LinkedHashMap<>();
+        contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .forEach(c -> all.put(c.getId(), c));
+        if (user.getTcKimlik() != null) {
+            contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                    .forEach(c -> all.putIfAbsent(c.getId(), c));
+        }
+
+        long total = all.size();
+        long draft = all.values().stream().filter(c -> "DRAFT".equals(c.getStatus())).count();
+        long pending = all.values().stream().filter(c -> "PENDING".equals(c.getStatus())).count();
+        long approved = all.values().stream().filter(c -> "APPROVED".equals(c.getStatus())).count();
+        long completed = all.values().stream().filter(c -> "COMPLETED".equals(c.getStatus())).count();
+        long rejected = all.values().stream().filter(c -> "REJECTED".equals(c.getStatus())).count();
 
         return ContractStatsResponse.builder()
-                .totalCount(contractRepository.countByUserId(userId))
-                .draftCount(contractRepository.countByUserIdAndStatus(userId, "DRAFT"))
-                .pendingCount(contractRepository.countByUserIdAndStatus(userId, "PENDING"))
-                .approvedCount(contractRepository.countByUserIdAndStatus(userId, "APPROVED"))
-                .completedCount(contractRepository.countByUserIdAndStatus(userId, "COMPLETED"))
-                .rejectedCount(contractRepository.countByUserIdAndStatus(userId, "REJECTED"))
+                .totalCount(total)
+                .draftCount(draft)
+                .pendingCount(pending)
+                .approvedCount(approved)
+                .completedCount(completed)
+                .rejectedCount(rejected)
                 .build();
     }
 
@@ -372,7 +456,8 @@ public class ContractService {
     public PdfConfirmResponse getPdfConfirmData(Long id, String username) {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
-        verifyOwnership(contract, username);
+        User viewer = userService.getUserByUsernameOrEmail(username);
+        verifyReadAccess(contract, viewer);
 
         java.util.List<String> warnings = new java.util.ArrayList<>();
 
@@ -467,6 +552,10 @@ public class ContractService {
         // Karşı taraf TC: API response'da her zaman maskeli göster (123******01)
         String maskedCounterpartyTc = encryptionService.decryptAndMask(contract.getCounterpartyTcKimlik());
         boolean isOwner = viewer == null || contract.getUser().getUsername().equals(viewer.getUsername());
+        User owner = contract.getUser();
+        String fullName = ((owner.getFirstName() != null ? owner.getFirstName() : "") + " "
+                + (owner.getLastName() != null ? owner.getLastName() : "")).trim();
+        if (fullName.isEmpty()) fullName = owner.getUsername();
         return ContractResponse.builder()
                 .id(contract.getId())
                 .title(contract.getTitle())
@@ -477,8 +566,9 @@ public class ContractService {
                 .counterpartyName(contract.getCounterpartyName())
                 .counterpartyRole(contract.getCounterpartyRole())
                 .counterpartyTcKimlik(maskedCounterpartyTc)
-                .userId(contract.getUser().getId())
-                .ownerUsername(contract.getUser().getUsername())
+                .userId(owner.getId())
+                .ownerUsername(owner.getUsername())
+                .ownerFullName(fullName)
                 .viewerIsOwner(isOwner)
                 .createdAt(contract.getCreatedAt())
                 .updatedAt(contract.getUpdatedAt())

@@ -75,23 +75,22 @@ public class NotificationService {
     @Transactional
     public void markAsRead(String username, Long notificationId) {
         User user = userService.getUserByUsernameOrEmail(username);
-        Notification n = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Bildirim bulunamadı, id: " + notificationId));
-
-        if (!n.getUser().getId().equals(user.getId())) {
+        int updated = notificationRepository.markReadByIdForUser(notificationId, user.getId());
+        if (updated == 0) {
+            // Kayıt yoksa veya bu kullanıcıya ait değilse 404 dön (IDOR önleme)
+            boolean exists = notificationRepository.findById(notificationId).isPresent();
+            if (!exists) {
+                throw new ResourceNotFoundException("Bildirim bulunamadı, id: " + notificationId);
+            }
+            // Var ama başka kullanıcıya ait — yine 404 dön
             throw new ResourceNotFoundException("Bildirim bulunamadı, id: " + notificationId);
         }
-
-        n.setIsRead(true);
-        notificationRepository.save(n);
     }
 
     @Transactional
     public void markAllAsRead(String username) {
         User user = userService.getUserByUsernameOrEmail(username);
-        List<Notification> unread = notificationRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(user.getId());
-        unread.forEach(n -> n.setIsRead(true));
-        notificationRepository.saveAll(unread);
+        notificationRepository.markAllReadForUser(user.getId());
     }
 
     @Transactional

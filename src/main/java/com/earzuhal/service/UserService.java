@@ -180,6 +180,7 @@ public class UserService {
                 .lastName(user.getLastName())
                 .role(user.getRole())
                 .isActive(user.getIsActive())
+                .twoFactorEnabled(Boolean.TRUE.equals(user.getTwoFactorEnabled()))
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

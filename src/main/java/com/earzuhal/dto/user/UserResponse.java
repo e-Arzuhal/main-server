@@ -20,6 +20,7 @@ public class UserResponse {
     private String lastName;
     private String role;
     private Boolean isActive;
+    private Boolean twoFactorEnabled;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }

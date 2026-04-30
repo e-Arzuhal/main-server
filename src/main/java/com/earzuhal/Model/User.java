@@ -52,6 +52,9 @@ public class User {
     @Column(name = "tc_kimlik", length = 64, unique = true)
     private String tcKimlik;
 
+    @Column(name = "two_factor_enabled", nullable = false)
+    private Boolean twoFactorEnabled = false;
+
         @Column(name = "notif_email")
         private Boolean notifEmail = true;
 

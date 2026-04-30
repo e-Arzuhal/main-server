@@ -24,6 +24,8 @@ public class ContractResponse {
     private String counterpartyTcKimlik;
     private Long userId;
     private String ownerUsername;
+    /** Sözleşme sahibinin görüntülenebilir tam adı (firstName + lastName). Boşsa username fallback. */
+    private String ownerFullName;
     private Boolean viewerIsOwner;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
