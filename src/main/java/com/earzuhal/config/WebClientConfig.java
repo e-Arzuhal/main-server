@@ -51,11 +51,11 @@ public class WebClientConfig {
         });
     }
 
-    private WebClient.Builder internalClientBuilder(String baseUrl) {
-        // 3 s bağlantı, 15 s yanıt zaman aşımı — servis düşerse cascade başarısızlık engellenir
+    private WebClient.Builder internalClientBuilder(String baseUrl, Duration responseTimeout) {
+        // 3 s bağlantı; yanıt zaman aşımı servise göre değişir (Ollama tabanlı NLP daha uzun sürer)
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3_000)
-                .responseTimeout(Duration.ofSeconds(15));
+                .responseTimeout(responseTimeout);
 
         WebClient.Builder builder = WebClient.builder()
                 .baseUrl(baseUrl)
@@ -68,22 +68,26 @@ public class WebClientConfig {
     }
 
     @Bean
-    public WebClient nlpWebClient(@Value("${services.nlp.base-url}") String baseUrl) {
-        return internalClientBuilder(baseUrl).build();
+    public WebClient nlpWebClient(
+            @Value("${services.nlp.base-url}") String baseUrl,
+            @Value("${services.nlp.response-timeout-seconds:120}") long responseTimeoutSeconds) {
+        return internalClientBuilder(baseUrl, Duration.ofSeconds(responseTimeoutSeconds)).build();
     }
 
     @Bean
-    public WebClient graphRagWebClient(@Value("${services.graphrag.base-url}") String baseUrl) {
-        return internalClientBuilder(baseUrl).build();
+    public WebClient graphRagWebClient(
+            @Value("${services.graphrag.base-url}") String baseUrl,
+            @Value("${services.graphrag.response-timeout-seconds:120}") long responseTimeoutSeconds) {
+        return internalClientBuilder(baseUrl, Duration.ofSeconds(responseTimeoutSeconds)).build();
     }
 
     @Bean
     public WebClient statisticsWebClient(@Value("${services.statistics.base-url}") String baseUrl) {
-        return internalClientBuilder(baseUrl).build();
+        return internalClientBuilder(baseUrl, Duration.ofSeconds(15)).build();
     }
 
     @Bean
     public WebClient chatbotWebClient(@Value("${services.chatbot.base-url}") String baseUrl) {
-        return internalClientBuilder(baseUrl).build();
+        return internalClientBuilder(baseUrl, Duration.ofSeconds(15)).build();
     }
 }

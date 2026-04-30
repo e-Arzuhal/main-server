@@ -40,7 +40,7 @@ public class NlpService {
             log.error("NLP servis hatası: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new RuntimeException("NLP servisi hata döndürdü: " + e.getStatusCode(), e);
         } catch (WebClientRequestException e) {
-            log.error("NLP servis zaman aşımı (3s connect / 15s response): {}", e.getMessage());
+            log.error("NLP servis bağlantı/zaman aşımı: {}", e.getMessage());
             throw new RuntimeException("NLP servisi yanıt süresi aşıldı. Servisin çalıştığından emin olun.", e);
         } catch (Exception e) {
             log.error("NLP servise bağlanılamadı: {}", e.getMessage());

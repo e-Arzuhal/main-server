@@ -24,6 +24,7 @@ public class ContractResponse {
     private String counterpartyTcKimlik;
     private Long userId;
     private String ownerUsername;
+    private Boolean viewerIsOwner;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 }
