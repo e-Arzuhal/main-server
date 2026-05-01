@@ -87,7 +87,11 @@ public class WebClientConfig {
     }
 
     @Bean
-    public WebClient chatbotWebClient(@Value("${services.chatbot.base-url}") String baseUrl) {
-        return internalClientBuilder(baseUrl, Duration.ofSeconds(15)).build();
+    public WebClient chatbotWebClient(
+            @Value("${services.chatbot.base-url}") String baseUrl,
+            @Value("${services.chatbot.response-timeout-seconds:90}") long responseTimeoutSeconds) {
+        // Gemini çağrısı 15-30 sn sürebildiğinden 15 sn ile sınırlamak frontend'e
+        // "Bir hata oluştu" yansımasına yol açıyordu — varsayılanı 90 sn yaptık.
+        return internalClientBuilder(baseUrl, Duration.ofSeconds(responseTimeoutSeconds)).build();
     }
 }

@@ -85,11 +85,75 @@ public class ContractService {
         String turkishType = com.earzuhal.dto.analysis.ContractTypeMapping.toTurkish(englishType);
         Map<String, Object> graph = graphRagService.getContractGraph(turkishType);
 
+        // Sözleşmeye persiste edilmiş Gemini risk gerekçelerini deserialize et
+        List<Map<String, Object>> missingExplanations = readMissingClauseExplanations(contract);
+        Boolean fallback = contract.getExplanationsFallback();
+
+        if (graph == null || graph.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("contractId", contractId);
+            empty.put("contractType", englishType);
+            empty.put("displayName", typeLabelTr(englishType));
+            empty.put("mandatoryClauses", List.of());
+            empty.put("optionalClauses", List.of());
+            empty.put("lawArticles", List.of());
+            empty.put("missingClauseExplanations", missingExplanations);
+            empty.put("explanationsFallback", Boolean.TRUE.equals(fallback));
+            empty.put("available", false);
+            empty.put("message", "Madde rehberi şu anda erişilemiyor.");
+            return empty;
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("contractId", contractId);
+        result.put("contractType", englishType);
+        result.put("displayName", graph.getOrDefault("display_name", typeLabelTr(englishType)));
+        result.put("mandatoryClauses", graph.getOrDefault("mandatory_clauses", List.of()));
+        result.put("optionalClauses", graph.getOrDefault("optional_clauses", List.of()));
+        result.put("lawArticles", graph.getOrDefault("law_articles", List.of()));
+        result.put("relatedRisks", graph.getOrDefault("related_risks", List.of()));
+        result.put("missingClauseExplanations", missingExplanations);
+        result.put("explanationsFallback", Boolean.TRUE.equals(fallback));
+        result.put("available", true);
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> readMissingClauseExplanations(Contract contract) {
+        String raw = contract.getMissingClauseExplanations();
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(raw, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception e) {
+            log.warn("missing_clause_explanations deserialize edilemedi, contract id={}: {}",
+                    contract.getId(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Sözleşme tipine göre madde rehberini döner — kayıt edilmemiş sözleşmeler
+     * için (CreateContractPage preview adımında) kullanılır. Type "RENTAL"
+     * (English) veya "kira_sozlesmesi" (Türkçe) olabilir; ikisini de kabul eder.
+     */
+    public Map<String, Object> getRequiredClausesByType(String type) {
+        if (type == null || type.isBlank()) {
+            return Map.of(
+                    "available", false,
+                    "message", "Sözleşme tipi belirtilmedi.",
+                    "mandatoryClauses", List.of(),
+                    "optionalClauses", List.of(),
+                    "lawArticles", List.of()
+            );
+        }
+        // English → Turkish çevir; zaten Türkçe ise olduğu gibi kalır.
+        String turkishType = ContractTypeMapping.toTurkish(type);
+        if (turkishType == null || turkishType.isBlank()) turkishType = type;
+        Map<String, Object> graph = graphRagService.getContractGraph(turkishType);
         if (graph == null || graph.isEmpty()) {
             return Map.of(
-                    "contractId", contractId,
-                    "contractType", englishType,
-                    "displayName", typeLabelTr(englishType),
+                    "contractType", type,
+                    "displayName", typeLabelTr(type),
                     "mandatoryClauses", List.of(),
                     "optionalClauses", List.of(),
                     "lawArticles", List.of(),
@@ -97,11 +161,9 @@ public class ContractService {
                     "message", "Madde rehberi şu anda erişilemiyor."
             );
         }
-
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put("contractId", contractId);
-        result.put("contractType", englishType);
-        result.put("displayName", graph.getOrDefault("display_name", typeLabelTr(englishType)));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("contractType", type);
+        result.put("displayName", graph.getOrDefault("display_name", typeLabelTr(type)));
         result.put("mandatoryClauses", graph.getOrDefault("mandatory_clauses", List.of()));
         result.put("optionalClauses", graph.getOrDefault("optional_clauses", List.of()));
         result.put("lawArticles", graph.getOrDefault("law_articles", List.of()));
@@ -154,6 +216,23 @@ public class ContractService {
                 contract.setClauseExplanations(objectMapper.writeValueAsString(explanations));
             } catch (Exception e) {
                 log.warn("Madde açıklamaları üretilemedi, sözleşme açıklamasız oluşturuluyor: {}", e.getMessage());
+            }
+
+            // Gemini risk listesini de persiste et — getRequiredClauses bu veriyi
+            // "missingClauseExplanations" altında frontend'e döndürür ki
+            // ContractDetailPage maddenin neden eksik olduğunu ve hangi TBK
+            // maddesine dayandığını gösterebilsin.
+            try {
+                List<Map<String, Object>> risks = request.getAnalysisContext().getRisks();
+                if (risks != null && !risks.isEmpty()) {
+                    contract.setMissingClauseExplanations(objectMapper.writeValueAsString(risks));
+                }
+                Boolean fallback = request.getAnalysisContext().getFallbackUsed();
+                if (fallback != null) {
+                    contract.setExplanationsFallback(fallback);
+                }
+            } catch (Exception e) {
+                log.warn("Eksik madde gerekçeleri persiste edilemedi: {}", e.getMessage());
             }
         }
 
@@ -279,6 +358,13 @@ public class ContractService {
         Contract contract = contractRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Sözleşme bulunamadı, id: " + id));
         verifyOwnership(contract, username);
+
+        // Kimlik doğrulama gate — sahibin de NFC ile doğrulanmış olması gerekir.
+        // PENDING_NFC (web'den manuel ön kayıt) finalize'a yetmez.
+        User owner = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Kullanıcı bulunamadı: " + username));
+        validateIdentityForApproval(owner);
+
         contract.setStatus("PENDING");
         contract.setUpdatedAt(OffsetDateTime.now());
         Contract updated = contractRepository.save(contract);

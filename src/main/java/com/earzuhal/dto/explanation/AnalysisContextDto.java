@@ -53,4 +53,18 @@ public class AnalysisContextDto {
      * { text, label ("PERSON"|"MONEY"|"DATE"|...), mappedField }
      */
     private List<Map<String, Object>> entities;
+
+    /**
+     * Gemini'nin eksik zorunlu alanlar için ürettiği hukuki risk listesi.
+     * Her eleman: { field, riskLevel, tbkArticle, explanation, suggestion }.
+     * Sözleşme oluşturulduğunda persiste edilir; daha sonra frontend
+     * "Bulunması Gereken Maddeler" kartında gerekçe + TBK madde olarak gösterir.
+     */
+    private List<Map<String, Object>> risks;
+
+    /**
+     * Gemini servisi gerçekten kullanılamadığında (503 fallback) frontend'in
+     * "AI servisi şu an erişilemiyor" rozetini gösterebilmesi için flag.
+     */
+    private Boolean fallbackUsed;
 }

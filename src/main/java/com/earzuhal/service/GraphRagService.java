@@ -100,6 +100,7 @@ public class GraphRagService {
         suggestions.setStatus("unavailable");
         suggestions.setNextAction("GraphRAG servisi şu an erişilemiyor. Analiz sonuçları mevcut değil.");
         suggestions.setChatbotQuestions(List.of());
+        suggestions.setSuggestions(List.of());
         resp.setSuggestions(suggestions);
 
         return resp;

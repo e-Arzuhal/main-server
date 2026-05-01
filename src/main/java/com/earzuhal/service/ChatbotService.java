@@ -259,18 +259,40 @@ public class ChatbotService {
     /** Zenginleştirilmiş isteği chatbot-server'a iletir. */
     private ChatResponse forwardToChatbot(EnrichedChatRequest enriched) {
         try {
-            return chatbotWebClient.post()
+            ChatResponse resp = chatbotWebClient.post()
                     .uri("/api/chat")
                     .bodyValue(enriched)
                     .retrieve()
                     .bodyToMono(ChatResponse.class)
                     .block();
+            // Boş yanıt geldiyse (timeout / Gemini hatası) kullanıcıya
+            // anlamlı bir mesaj göster — frontend "Bir hata oluştu" yerine
+            // bağlamsal bir mesaj görür.
+            if (resp == null || resp.getResponse() == null || resp.getResponse().isBlank()) {
+                return fallbackResponse();
+            }
+            return resp;
         } catch (WebClientResponseException e) {
             log.error("Chatbot servis hatası: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("Chatbot servisi yanıt vermedi: " + e.getMessage(), e);
+            return fallbackResponse();
         } catch (Exception e) {
             log.error("Chatbot servise bağlanılamadı: {}", e.getMessage());
-            throw new RuntimeException("Chatbot servise bağlanılamadı. Servisin çalıştığından emin olun.", e);
+            return fallbackResponse();
         }
+    }
+
+    /** Chatbot erişilemez/zaman aşımı durumunda kullanıcıya şeffaf, hatalı görünmeyen yanıt. */
+    private ChatResponse fallbackResponse() {
+        ChatResponse fallback = new ChatResponse(
+                "Yardımcı asistan şu anda çok yoğun ve yanıt veremedi. Lütfen birkaç saniye sonra tekrar deneyin. " +
+                        "Bu arada sözleşmenizi 'Sözleşmelerim' sayfasından açıp 'Bulunması Gereken Maddeler' panelinden " +
+                        "rehberi inceleyebilirsiniz.",
+                List.of(
+                        "Sözleşme nasıl oluşturulur?",
+                        "PDF nasıl indirilir?",
+                        "Hangi sözleşme tipleri destekleniyor?"
+                )
+        );
+        return fallback;
     }
 }

@@ -1,9 +1,19 @@
 package com.earzuhal.dto.chatbot;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 
 public class ChatResponse {
     private String response;
+    /**
+     * Python tarafı snake_case (suggested_questions) gönderir.
+     * Hem snake_case hem camelCase'i kabul ederiz; serialize ederken
+     * frontend'in beklediği camelCase yazılır.
+     */
+    @JsonProperty("suggestedQuestions")
+    @JsonAlias({"suggested_questions"})
     private List<String> suggestedQuestions;
 
     /**
