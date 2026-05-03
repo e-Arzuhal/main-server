@@ -58,6 +58,11 @@ public class GraphRagResponse {
 
         @JsonProperty("chatbot_questions")
         private List<ChatbotQuestion> chatbotQuestions;
+
+        // Frontend (CreateContractPage) bu listeyi
+        // `suggestions.suggestions[]` olarak okuyor — chatbotQuestions ile paralel.
+        @JsonProperty("suggestions")
+        private List<Suggestion> suggestions;
     }
 
     @Data
@@ -67,6 +72,21 @@ public class GraphRagResponse {
         private String field;
         private String question;
         private boolean required;
+    }
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Suggestion {
+        @JsonProperty("field_name")
+        private String fieldName;
+
+        private String message;
+
+        /** "required" | "recommended" */
+        private String necessity;
+
+        @JsonProperty("usage_percent")
+        private Integer usagePercent;
     }
 
     @Data

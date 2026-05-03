@@ -2,6 +2,7 @@ package com.earzuhal.service;
 
 import com.earzuhal.dto.analysis.NlpResponse;
 import com.earzuhal.dto.chatbot.ChatIntentResponse;
+import com.earzuhal.exception.SanitizationUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -51,34 +52,47 @@ public class NlpService {
     /**
      * Chatbot mesajının niyetini sınıflandırır ve PII maskeleme yapar.
      * POST /api/v1/chat-intent { "message": "..." }
+     *
+     * NLP servisi erişilemezse fallback YAPILMAZ — ham (PII içerebilen)
+     * kullanıcı metninin Gemini gibi dış LLM servislerine sızmasını
+     * engellemek için {@link SanitizationUnavailableException} fırlatılır.
      */
     public ChatIntentResponse classifyIntent(String message) {
         log.info("Chat intent sınıflandırma isteği gönderiliyor");
 
+        ChatIntentResponse response;
         try {
-            return webClient.post()
+            response = webClient.post()
                     .uri("/api/v1/chat-intent")
                     .bodyValue(Map.of("message", message))
                     .retrieve()
                     .bodyToMono(ChatIntentResponse.class)
                     .block();
         } catch (WebClientResponseException e) {
-            log.warn("NLP chat-intent hatası: {} — fallback GENERAL_HELP", e.getStatusCode());
-            return fallbackIntent(message);
+            log.error("NLP chat-intent hata kodu: {} - sanitization yapılamadı, istek reddediliyor",
+                    e.getStatusCode());
+            throw new SanitizationUnavailableException(
+                    "NLP sanitization servisi geçici olarak hata döndürüyor: " + e.getStatusCode(), e);
+        } catch (WebClientRequestException e) {
+            log.error("NLP servise bağlanılamadı (chat-intent) — sanitization yapılamadı, istek reddediliyor: {}",
+                    e.getMessage());
+            throw new SanitizationUnavailableException(
+                    "NLP sanitization servisine bağlanılamadı.", e);
         } catch (Exception e) {
-            log.warn("NLP servise bağlanılamadı (chat-intent), fallback kullanılıyor: {}", e.getMessage());
-            return fallbackIntent(message);
+            log.error("NLP chat-intent beklenmeyen hata — sanitization yapılamadı, istek reddediliyor: {}",
+                    e.getMessage());
+            throw new SanitizationUnavailableException(
+                    "NLP sanitization sırasında beklenmeyen hata oluştu.", e);
         }
-    }
 
-    /** NLP servisi erişilemezse GENERAL_HELP döner */
-    private ChatIntentResponse fallbackIntent(String message) {
-        ChatIntentResponse fallback = new ChatIntentResponse();
-        fallback.setIntent("GENERAL_HELP");
-        fallback.setConfidence(0.0);
-        fallback.setSanitizedMessage(message);
-        fallback.setDetectedEntities(Map.of());
-        return fallback;
+        // Yanıt geldi ama sanitized_message alanı boşsa, ham mesajın LLM'e gitmesine
+        // izin verme — yine güvenlik açığı sayılır.
+        if (response == null || response.getSanitizedMessage() == null) {
+            log.error("NLP chat-intent yanıtında sanitized_message alanı yok — istek reddediliyor");
+            throw new SanitizationUnavailableException(
+                    "NLP sanitization servisi geçersiz yanıt döndürdü.", null);
+        }
+        return response;
     }
 }
 

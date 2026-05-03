@@ -52,6 +52,21 @@ public class Contract {
     @Column(name = "clause_explanations", columnDefinition = "TEXT")
     private String clauseExplanations;
 
+    /**
+     * Eksik zorunlu maddeler için Gemini'nin ürettiği hukuki gerekçe listesi.
+     * JSON serialized List&lt;Map&gt;: [{ field, riskLevel, tbkArticle, explanation, suggestion }, ...]
+     * /api/contracts/{id}/required-clauses çağrısında frontend'e döndürülür.
+     */
+    @Column(name = "missing_clause_explanations", columnDefinition = "TEXT")
+    private String missingClauseExplanations;
+
+    /**
+     * Gemini servisinin fallback moduna düştüğünü işaretler — frontend "AI
+     * servisi erişilemiyor — temel uyarı" rozeti basabilsin diye.
+     */
+    @Column(name = "explanations_fallback")
+    private Boolean explanationsFallback;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;

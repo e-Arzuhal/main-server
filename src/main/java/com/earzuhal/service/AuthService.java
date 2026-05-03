@@ -96,9 +96,11 @@ public class AuthService {
 
         UserDetails userDetails = userDetailsService.loadUserByUsername(savedUser.getUsername());
         String token = jwtTokenProvider.generateToken(userDetails);
+        String refreshToken = jwtTokenProvider.generateRefreshToken(savedUser.getUsername());
 
         return AuthResponse.builder()
                 .accessToken(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtConfig.getExpirationMs())
                 .userInfo(userService.convertToResponse(savedUser))
@@ -138,13 +140,50 @@ public class AuthService {
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String token = jwtTokenProvider.generateToken(authentication);
+        String refreshToken = jwtTokenProvider.generateRefreshToken(user.getUsername());
 
         return AuthResponse.builder()
                 .accessToken(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtConfig.getExpirationMs())
                 .userInfo(userService.convertToResponse(user))
                 .requires2fa(false)
+                .build();
+    }
+
+    /**
+     * Refresh token doğrulayıp yeni access token + yeni refresh token döner.
+     * Refresh token rotation: her başarılı yenilemede eski refresh token örtük olarak
+     * geçersiz kalır (istemci yenisini saklamalı).
+     */
+    @Transactional(readOnly = true)
+    public AuthResponse refresh(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new com.earzuhal.exception.InvalidTokenException("Refresh token gerekli.");
+        }
+        // İmza + süre kontrolü; geçersizse InvalidTokenException fırlatır.
+        jwtTokenProvider.validateToken(refreshToken);
+        if (!jwtTokenProvider.isRefreshToken(refreshToken)) {
+            throw new com.earzuhal.exception.InvalidTokenException("Bu token bir refresh token değil.");
+        }
+
+        String username = jwtTokenProvider.getUsernameFromToken(refreshToken);
+        User user = userService.getUserByUsernameOrEmail(username);
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new com.earzuhal.exception.InvalidTokenException("Hesap aktif değil.");
+        }
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getUsername());
+        String newAccess = jwtTokenProvider.generateToken(userDetails);
+        String newRefresh = jwtTokenProvider.generateRefreshToken(user.getUsername());
+
+        return AuthResponse.builder()
+                .accessToken(newAccess)
+                .refreshToken(newRefresh)
+                .tokenType("Bearer")
+                .expiresIn(jwtConfig.getExpirationMs())
+                .userInfo(userService.convertToResponse(user))
                 .build();
     }
 
@@ -197,8 +236,8 @@ public class AuthService {
         if (code == null || code.isBlank()) {
             throw new BadRequestException("Geçersiz veya süresi dolmuş kod.");
         }
-        if (newPassword == null || newPassword.length() < 6) {
-            throw new BadRequestException("Şifre en az 6 karakter olmalıdır.");
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new BadRequestException("Şifre en az 8 karakter olmalıdır.");
         }
 
         PasswordResetToken prt = passwordResetTokenRepository.findByToken(code.trim())

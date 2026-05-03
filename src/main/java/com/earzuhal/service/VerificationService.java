@@ -52,8 +52,13 @@ public class VerificationService {
 
         User user = userService.getUserByUsernameOrEmail(username);
 
+        String method = request.getMethod() != null ? request.getMethod().toUpperCase() : "MANUAL";
+        boolean isManual = "MANUAL".equals(method);
+
         // Güvenlik: tcKimlik bir kez doğrulandıktan sonra değiştirilemez
-        if (user.getTcKimlik() != null) {
+        // (MANUAL akışında zaten user.tcKimlik set'lenmiyor — bu kontrol sadece
+        // gerçek doğrulama (NFC/MRZ) için anlamlı)
+        if (user.getTcKimlik() != null && !isManual) {
             throw new BadRequestException("Kimlik doğrulaması zaten yapılmış. TC Kimlik numarası değiştirilemez.");
         }
 
@@ -65,7 +70,8 @@ public class VerificationService {
                     "Lütfen kayıt sırasında kullandığınız ad ve soyadı girin.");
         }
 
-        // Varsa mevcut kaydı güncelle, yoksa yeni oluştur
+        // Varsa mevcut kaydı güncelle, yoksa yeni oluştur (mobil NFC akışı manuel
+        // ön kayıttan sonra geldiğinde duplicate hatası vermesin diye upsert).
         Optional<IdentityVerification> existing = verificationRepository.findByUserId(user.getId());
         IdentityVerification verification = existing.orElse(new IdentityVerification());
 
@@ -74,7 +80,37 @@ public class VerificationService {
         verification.setFirstName(request.getFirstName());
         verification.setLastName(request.getLastName());
         verification.setDateOfBirth(request.getDateOfBirth());
-        verification.setVerificationMethod(request.getMethod() != null ? request.getMethod().toUpperCase() : "MANUAL");
+
+        if (isManual) {
+            // GÜVENLİK: web "Manuel Giriş → Devam Et" gerçek doğrulama değildir;
+            // sadece bilgileri ön kayda alır. user.tcKimlik bilerek set EDİLMEZ
+            // ve status PENDING_NFC olarak işaretlenir, böylece sözleşme
+            // finalize/onay/ret gate'leri kullanıcıyı geçirmez. Mobile NFC
+            // akışı tamamlanınca aynı satır VERIFIED'e güncellenir.
+            verification.setVerificationMethod("MANUAL_PENDING");
+            verification.setStatus("PENDING_NFC");
+            verification.setVerifiedAt(null);
+            if (verification.getCreatedAt() == null) {
+                verification.setCreatedAt(OffsetDateTime.now());
+            }
+            verificationRepository.save(verification);
+
+            log.info("Identity pre-registered (MANUAL/PENDING_NFC) for user={}", username);
+
+            return VerificationResponse.builder()
+                    .status("PENDING_NFC")
+                    .message("Bilgileriniz kaydedildi. Doğrulamayı tamamlamak için e-Arzuhal mobil uygulamasından NFC tarama yapmanız gerekmektedir.")
+                    .tcNoMasked(verification.getTcNoMasked())
+                    .firstName(verification.getFirstName())
+                    .lastName(verification.getLastName())
+                    .verificationMethod("MANUAL_PENDING")
+                    .verifiedAt(null)
+                    .verified(false)
+                    .build();
+        }
+
+        // NFC veya MRZ — gerçek doğrulama
+        verification.setVerificationMethod(method);
         verification.setStatus("VERIFIED");
         verification.setVerifiedAt(OffsetDateTime.now());
         if (verification.getCreatedAt() == null) {

@@ -34,5 +34,12 @@ public class JwtConfig {
         if (expirationMs == null || expirationMs <= 0) {
             throw new IllegalStateException("jwt.expiration-ms pozitif olmalı.");
         }
+        if (refreshExpirationMs == null || refreshExpirationMs <= 0) {
+            throw new IllegalStateException("jwt.refresh-expiration-ms pozitif olmalı.");
+        }
+        if (refreshExpirationMs <= expirationMs) {
+            throw new IllegalStateException(
+                    "jwt.refresh-expiration-ms, jwt.expiration-ms değerinden büyük olmalı.");
+        }
     }
 }

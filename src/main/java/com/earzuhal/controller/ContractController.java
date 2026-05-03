@@ -120,6 +120,16 @@ public class ContractController {
     }
 
     /**
+     * Sözleşme tipine göre rehber. Sözleşme henüz kaydedilmeden önce
+     * önizleme adımında kullanılır — id gerektirmez.
+     * GET /api/contracts/clauses/{type}
+     */
+    @GetMapping("/clauses/{type}")
+    public ResponseEntity<java.util.Map<String, Object>> getClausesByType(@PathVariable String type) {
+        return ResponseEntity.ok(contractService.getRequiredClausesByType(type));
+    }
+
+    /**
      * PDF oluşturmadan önce kullanıcıya onay verisi sunar.
      * NLP'nin parse ettiği tutar, taraflar vb. doğrulanabilsin diye.
      * Frontend bu yanıtı onay dialogunda gösterir; readyForPdf=false ise uyarı gösterilmeli.

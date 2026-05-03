@@ -43,6 +43,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String jwt = extractJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
+                // Refresh token'ı access token olarak kabul etme — yalnızca /api/auth/refresh
+                // ucu refresh token kabul eder.
+                if (jwtTokenProvider.isRefreshToken(jwt)) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Refresh token cannot be used as access token\"}");
+                    return;
+                }
+
                 // Blacklist kontrolü — revoke edilmiş token'lar reddedilir.
                 // Permit-all uçlarda sessizce devam etmek yerine 401 dön: çalıntı/iptal
                 // edilmiş bir token taşıyan istek hiçbir kaynağa erişemesin.

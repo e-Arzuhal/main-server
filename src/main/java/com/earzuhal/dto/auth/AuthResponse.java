@@ -14,6 +14,9 @@ public class AuthResponse {
 
     private String accessToken;
 
+    /** Uzun ömürlü refresh token. Access token süresi dolduğunda yenilemek için kullanılır. */
+    private String refreshToken;
+
     @Builder.Default
     private String tokenType = "Bearer";
 

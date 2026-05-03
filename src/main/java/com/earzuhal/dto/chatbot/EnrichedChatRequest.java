@@ -29,11 +29,11 @@ public class EnrichedChatRequest {
     @JsonProperty("intent")
     private String intent;
 
-    /** Sözleşme bağlam özeti (tip, taraflar, maddeler vs.) */
+    /** Sözleşme bağlam özeti (tip, taraflar, maddeler vs.) — snake_case Python tarafı için */
     @JsonProperty("contract_context")
     private String contractContext;
 
-    /** GraphRAG'den gelen analiz / kanun bilgisi */
+    /** GraphRAG'den gelen analiz / kanun bilgisi — snake_case Python tarafı için */
     @JsonProperty("graphrag_context")
     private String graphRagContext;
 
