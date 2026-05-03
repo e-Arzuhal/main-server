@@ -4,6 +4,7 @@ import com.earzuhal.service.TokenBlacklistService;
 import com.earzuhal.dto.auth.AuthResponse;
 import com.earzuhal.dto.auth.ForgotPasswordRequest;
 import com.earzuhal.dto.auth.LoginRequest;
+import com.earzuhal.dto.auth.RefreshTokenRequest;
 import com.earzuhal.dto.auth.RegisterRequest;
 import com.earzuhal.dto.auth.ResetPasswordRequest;
 import com.earzuhal.dto.auth.TwoFactorVerifyRequest;
@@ -47,6 +48,16 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest loginRequest) {
         AuthResponse response = authService.login(loginRequest);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Refresh token ile yeni access token (ve yeni refresh token) üretir.
+     * Eski refresh token örtük olarak geçersizleşir (istemci yenisini saklamalı).
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refresh(request.getRefreshToken());
         return ResponseEntity.ok(response);
     }
 

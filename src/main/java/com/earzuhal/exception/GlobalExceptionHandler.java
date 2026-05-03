@@ -69,6 +69,20 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(SanitizationUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleSanitizationUnavailableException(
+            SanitizationUnavailableException ex, WebRequest request) {
+        log.error("Sanitization unavailable: {}", ex.getMessage());
+        ErrorResponse errorResponse = new ErrorResponse(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                "Olası güvenlik problemleri sebebiyle şu anda işleminizi gerçekleştiremiyoruz. " +
+                        "Lütfen daha sonra tekrar deneyin.",
+                OffsetDateTime.now(),
+                request.getDescription(false).replace("uri=", "")
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ErrorResponse> handleInvalidTokenException(
             InvalidTokenException ex, WebRequest request) {

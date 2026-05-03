@@ -22,11 +22,15 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String REGISTER_PATH = "/api/auth/register";
+    private static final String TWO_FA_VERIFY_PATH = "/api/auth/2fa/verify";
+    private static final String TWO_FA_SEND_PATH = "/api/auth/2fa/send";
 
     private final ObjectMapper objectMapper;
 
     private final ConcurrentHashMap<String, Deque<Instant>> loginAttempts = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Deque<Instant>> registerAttempts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Deque<Instant>> twoFaVerifyAttempts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Deque<Instant>> twoFaSendAttempts = new ConcurrentHashMap<>();
 
     @Value("${auth.rate-limit.login.max-attempts:10}")
     private int loginMaxAttempts;
@@ -39,6 +43,20 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
 
     @Value("${auth.rate-limit.register.window-seconds:3600}")
     private int registerWindowSeconds;
+
+    /** 2FA brute-force koruması: 6 haneli kod = 10^6 olasılık, kısa pencerede agresif limit. */
+    @Value("${auth.rate-limit.2fa-verify.max-attempts:5}")
+    private int twoFaVerifyMaxAttempts;
+
+    @Value("${auth.rate-limit.2fa-verify.window-seconds:300}")
+    private int twoFaVerifyWindowSeconds;
+
+    /** 2FA kod isteme: e-posta gönderim spam'ini engelle. */
+    @Value("${auth.rate-limit.2fa-send.max-attempts:3}")
+    private int twoFaSendMaxAttempts;
+
+    @Value("${auth.rate-limit.2fa-send.window-seconds:300}")
+    private int twoFaSendWindowSeconds;
 
     @Value("${security.trust-forwarded-headers:false}")
     private boolean trustForwardedHeaders;
@@ -53,7 +71,10 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             return true;
         }
         String path = request.getServletPath();
-        return !LOGIN_PATH.equals(path) && !REGISTER_PATH.equals(path);
+        return !LOGIN_PATH.equals(path)
+                && !REGISTER_PATH.equals(path)
+                && !TWO_FA_VERIFY_PATH.equals(path)
+                && !TWO_FA_SEND_PATH.equals(path);
     }
 
     @Override
@@ -66,8 +87,12 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         boolean limited;
         if (LOGIN_PATH.equals(path)) {
             limited = isRateLimited(loginAttempts, clientKey, loginMaxAttempts, loginWindowSeconds);
-        } else {
+        } else if (REGISTER_PATH.equals(path)) {
             limited = isRateLimited(registerAttempts, clientKey, registerMaxAttempts, registerWindowSeconds);
+        } else if (TWO_FA_VERIFY_PATH.equals(path)) {
+            limited = isRateLimited(twoFaVerifyAttempts, clientKey, twoFaVerifyMaxAttempts, twoFaVerifyWindowSeconds);
+        } else {
+            limited = isRateLimited(twoFaSendAttempts, clientKey, twoFaSendMaxAttempts, twoFaSendWindowSeconds);
         }
 
         if (limited) {

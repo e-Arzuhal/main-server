@@ -224,7 +224,9 @@ DELETE /api/users/{id}
 
 ## Veritabanı Şeması
 
-Tablolar Hibernate tarafından otomatik oluşturulur (`ddl-auto=update`).
+Tablolar Hibernate tarafından yönetilir. Varsayılan değer üretim güvenliği için
+`ddl-auto=validate`'tir; ortamdan `DDL_AUTO` değişkeniyle ezilebilir
+(`update` geliştirmede, `validate` üretimde önerilir).
 
 | Tablo | Açıklama |
 |-------|----------|

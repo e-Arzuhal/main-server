@@ -243,6 +243,7 @@ public class PdfService {
             case "is_sozlesmesi", "employment"                  -> "pdf/contracts/is_sozlesmesi";
             case "vekaletname", "power_of_attorney"             -> "pdf/contracts/vekaletname";
             case "taahhutname", "commitment"                    -> "pdf/contracts/taahhutname";
+            case "kefalet_sozlesmesi", "surety"                 -> "pdf/contracts/kefalet_sozlesmesi";
             case "other", "diger", "genel_sozlesme", "general"  -> "pdf/contracts/genel_sozlesme";
             default                                             -> "pdf/contracts/genel_sozlesme";
         };
@@ -258,6 +259,7 @@ public class PdfService {
             case "is_sozlesmesi", "employment"   -> "İş Sözleşmesi";
             case "vekaletname"                   -> "Vekaletname";
             case "taahhutname"                   -> "Taahhütname";
+            case "kefalet_sozlesmesi", "surety"  -> "Kefalet Sözleşmesi";
             default                              -> "Genel Sözleşme";
         };
     }

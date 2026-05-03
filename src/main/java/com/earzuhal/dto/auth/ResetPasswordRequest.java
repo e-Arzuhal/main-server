@@ -24,6 +24,6 @@ public class ResetPasswordRequest {
     private String code;
 
     @NotBlank
-    @Size(min = 6, message = "Şifre en az 6 karakter olmalıdır")
+    @Size(min = 8, message = "Şifre en az 8 karakter olmalıdır")
     private String newPassword;
 }

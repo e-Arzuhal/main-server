@@ -100,9 +100,10 @@ public class ChatbotService {
         }
 
         // 4. Zenginleştirilmiş isteği chatbot-server'a gönder
-        // KVKK: Ham mesaj yerine maskelenmiş mesajı gönder — Gemini ham PII görmesin
-        String safeMessage = nlpResult.getSanitizedMessage() != null
-                ? nlpResult.getSanitizedMessage() : request.getMessage();
+        // KVKK: Ham mesaj YOK — yalnızca NLP tarafından sanitize edilmiş mesaj
+        // Gemini'ye iletilir. NlpService sanitization yapılamadığında istisna fırlatır,
+        // bu yüzden buraya geldiğimizde sanitizedMessage'ın dolu olduğu garantilidir.
+        String safeMessage = nlpResult.getSanitizedMessage();
         EnrichedChatRequest enriched = EnrichedChatRequest.builder()
                 .message(safeMessage)
                 .sanitizedMessage(safeMessage)

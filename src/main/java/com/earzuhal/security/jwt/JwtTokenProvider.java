@@ -52,10 +52,36 @@ public class JwtTokenProvider {
                 .id(UUID.randomUUID().toString())   // jti claim — revocation için
                 .subject(username)
                 .claim("roles", roles)
+                .claim("type", "access")
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(secretKey)
                 .compact();
+    }
+
+    /**
+     * Refresh token üretir. Access token'dan farkı:
+     *  - "type" claim'i "refresh"
+     *  - daha uzun ömür (jwt.refresh-expiration-ms)
+     *  - rol claim'i içermez (yalnızca yeni access token üretmek için kullanılır)
+     */
+    public String generateRefreshToken(String username) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtConfig.getRefreshExpirationMs());
+
+        return Jwts.builder()
+                .id(UUID.randomUUID().toString())
+                .subject(username)
+                .claim("type", "refresh")
+                .issuedAt(now)
+                .expiration(expiryDate)
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public boolean isRefreshToken(String token) {
+        Object type = getClaims(token).get("type");
+        return "refresh".equals(type);
     }
 
     public String getUsernameFromToken(String token) {
