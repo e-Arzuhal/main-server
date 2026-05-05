@@ -189,17 +189,36 @@ public class ChatbotService {
         return findActiveContract(username);
     }
 
-    /** Kullanıcının chatbot'ta seçebileceği sözleşmeler — son 10 sözleşme (DRAFT/PENDING/APPROVED). */
+    /** Kullanıcının chatbot'ta seçebileceği sözleşmeler — sahip olduğu + karşı
+     *  taraf olduğu (onay bekleyen) son 10 sözleşme (DRAFT/PENDING/APPROVED).
+     *  Önceden yalnızca user-owned dönüyordu; o yüzden onay için sözleşme
+     *  gelen kullanıcı chatbot ile o sözleşmeyi konuşamıyordu. */
     private List<Contract> listSelectableContracts(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            return contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
+            // ID'ye göre tekilleştir (sahip + karşı taraf aynı sözleşmede mümkün
+            // değil ama defansif olalım), createdAt'a göre desc sırala.
+            java.util.LinkedHashMap<Long, Contract> byId = new java.util.LinkedHashMap<>();
+            contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                    .forEach(c -> byId.put(c.getId(), c));
+            if (user.getTcKimlik() != null) {
+                contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                        .forEach(c -> byId.putIfAbsent(c.getId(), c));
+            }
+            return byId.values().stream()
                     .filter(c -> {
                         String s = c.getStatus();
                         return s == null
                                 || "DRAFT".equals(s)
                                 || "PENDING".equals(s)
                                 || "APPROVED".equals(s);
+                    })
+                    .sorted((a, b) -> {
+                        var ad = a.getCreatedAt(); var bd = b.getCreatedAt();
+                        if (ad == null && bd == null) return 0;
+                        if (ad == null) return 1;
+                        if (bd == null) return -1;
+                        return bd.compareTo(ad);
                     })
                     .limit(10)
                     .toList();
@@ -209,11 +228,12 @@ public class ChatbotService {
         }
     }
 
-    /** Kullanıcının son DRAFT veya PENDING sözleşmesini bulur. */
+    /** Kullanıcının son DRAFT veya PENDING sözleşmesini bulur — sahip olduğu
+     *  veya karşı taraf olduğu sözleşmeleri kapsar. */
     private Contract findActiveContract(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            // Önce DRAFT, sonra PENDING ara
+            // Önce DRAFT (yalnızca sahip olabilir), sonra PENDING (sahip + karşı taraf)
             List<Contract> drafts = contractRepository
                     .findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "DRAFT");
             if (!drafts.isEmpty()) return drafts.get(0);
@@ -221,6 +241,14 @@ public class ChatbotService {
             List<Contract> pending = contractRepository
                     .findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "PENDING");
             if (!pending.isEmpty()) return pending.get(0);
+
+            // Karşı taraf olarak gelen onay bekleyen sözleşmeler
+            if (user.getTcKimlik() != null) {
+                List<Contract> incoming = contractRepository
+                        .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(
+                                user.getTcKimlik(), "PENDING");
+                if (!incoming.isEmpty()) return incoming.get(0);
+            }
 
             return null;
         } catch (Exception e) {
@@ -238,8 +266,15 @@ public class ChatbotService {
     private String buildAllContractsContext(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            List<Contract> all = contractRepository
-                    .findByUserIdOrderByCreatedAtDesc(user.getId());
+            // Sahip olunan + karşı taraf olunan sözleşmeleri tekilleştir
+            java.util.LinkedHashMap<Long, Contract> byId = new java.util.LinkedHashMap<>();
+            contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                    .forEach(c -> byId.put(c.getId(), c));
+            if (user.getTcKimlik() != null) {
+                contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                        .forEach(c -> byId.putIfAbsent(c.getId(), c));
+            }
+            List<Contract> all = new java.util.ArrayList<>(byId.values());
             if (all.isEmpty()) return null;
             StringBuilder sb = new StringBuilder();
             sb.append("Kullanıcının kayıtlı sözleşmeleri (toplam ")

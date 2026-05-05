@@ -46,6 +46,17 @@ public class PdfService {
         String dateStr = contract.getCreatedAt() != null
                 ? contract.getCreatedAt().format(DATE_FORMATTER)
                 : java.time.OffsetDateTime.now().format(DATE_FORMATTER);
+        // Karşı taraf imza tarihi: sözleşme APPROVED/COMPLETED ise updatedAt
+        // (onay tarihi), aksi halde createdAt — şablonda her iki imza
+        // hücresinde de görünür bir tarih olsun, "Tarih: ___" boş kalmasın.
+        boolean approvedStatus = "APPROVED".equals(contract.getStatus())
+                || "COMPLETED".equals(contract.getStatus());
+        String counterpartyDateStr;
+        if (approvedStatus && contract.getUpdatedAt() != null) {
+            counterpartyDateStr = contract.getUpdatedAt().format(DATE_FORMATTER);
+        } else {
+            counterpartyDateStr = dateStr;
+        }
         String contractId = String.format("EA-%06d", contract.getId());
         String hash = computeContractHash(contract);
 
@@ -53,6 +64,7 @@ public class PdfService {
         ctx.setVariable("contract", contract);
         ctx.setVariable("ownerFullName", ownerFullName);
         ctx.setVariable("currentDate", dateStr);
+        ctx.setVariable("counterpartyDate", counterpartyDateStr);
         ctx.setVariable("contractId", contractId);
         ctx.setVariable("documentHash", hash);
         ctx.setVariable("hashShort", hash.length() >= 16 ? hash.substring(0, 16).toUpperCase() : hash.toUpperCase());
