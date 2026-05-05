@@ -36,6 +36,32 @@ public class ChatbotService {
             "LAW_REFERENCE"
     );
 
+    /**
+     * "Sözleşmelerim hakkında bilgi ver", "oluşturduğum sözleşmeler", "benim
+     * tüm sözleşmelerim" gibi LİSTE sorgularını yakalamak için anahtar kelimeler.
+     * NLP intent classifier bu tür ifadeleri "GENERAL_HELP" olarak etiketliyor;
+     * o yüzden intent gelmeden önce bu pattern'i yakalayıp tüm sözleşmelerin
+     * özetini contractContext olarak chatbot-server'a iletiyoruz.
+     */
+    private static boolean looksLikeContractListQuery(String message) {
+        if (message == null) return false;
+        String m = message.toLowerCase()
+                .replace('ç', 'c').replace('ğ', 'g').replace('ı', 'i')
+                .replace('ö', 'o').replace('ş', 's').replace('ü', 'u');
+        boolean mentionsContract = m.contains("sozlesme") || m.contains("contract");
+        if (!mentionsContract) return false;
+        return m.contains("benim")
+                || m.contains("olusturdugum")
+                || m.contains("olusturdugu")
+                || m.contains("kendi sozlesme")
+                || m.contains("sozlesmelerim")
+                || m.contains("tum sozlesme")
+                || m.contains("sozlesme listesi")
+                || m.contains("hangi sozlesme")
+                || m.contains("kac sozlesme")
+                || m.contains("sahip oldugum");
+    }
+
     public ChatbotService(
             @Qualifier("chatbotWebClient") WebClient chatbotWebClient,
             NlpService nlpService,
@@ -58,6 +84,28 @@ public class ChatbotService {
      */
     public ChatResponse chat(ChatRequest request, String username) {
         log.info("Chatbot orkestrasyon başlıyor — user={}, mesaj={}", username, request.getMessage());
+
+        // 0. "Sözleşmelerim hakkında bilgi ver" gibi LİSTE sorgularında
+        // NLP intent'i (genelde GENERAL_HELP) yetersiz kalıyor — kullanıcının
+        // tüm sözleşmelerinin özetini bağlama enjekte ediyoruz ve intent'i
+        // CONTRACT_LIST_QUERY olarak işaretliyoruz. Chatbot-server bu intent
+        // için system_override + contractContext ile LLM'e gider.
+        if (looksLikeContractListQuery(request.getMessage())) {
+            String allContracts = buildAllContractsContext(username);
+            if (allContracts != null && !allContracts.isBlank()) {
+                EnrichedChatRequest listEnriched = EnrichedChatRequest.builder()
+                        .message(request.getMessage())
+                        .sanitizedMessage(request.getMessage())
+                        .intent("CONTRACT_LIST_QUERY")
+                        .contractContext(allContracts)
+                        .graphRagContext(null)
+                        .history(request.getHistory())
+                        .build();
+                log.info("CONTRACT_LIST_QUERY: kullanıcının {} sözleşmesi context'e enjekte edildi",
+                        allContracts.split("\n").length);
+                return forwardToChatbot(listEnriched);
+            }
+        }
 
         // 1. NLP-server'a gönder → intent + sanitized_message
         ChatIntentResponse nlpResult = nlpService.classifyIntent(request.getMessage());
@@ -177,6 +225,43 @@ public class ChatbotService {
             return null;
         } catch (Exception e) {
             log.warn("Aktif sözleşme bulunamadı: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Kullanıcının TÜM sözleşmelerinin özet listesini Gemini için string'e
+     * dönüştürür. CONTRACT_LIST_QUERY intent'inde kullanılır — kullanıcı
+     * "sözleşmelerim hakkında bilgi ver" derken Gemini bu listeyi görüp
+     * hangileri olduğunu, durumlarını ve tarafları söyleyebilir.
+     */
+    private String buildAllContractsContext(String username) {
+        try {
+            User user = userService.getUserByUsernameOrEmail(username);
+            List<Contract> all = contractRepository
+                    .findByUserIdOrderByCreatedAtDesc(user.getId());
+            if (all.isEmpty()) return null;
+            StringBuilder sb = new StringBuilder();
+            sb.append("Kullanıcının kayıtlı sözleşmeleri (toplam ")
+              .append(all.size()).append("):\n");
+            int i = 1;
+            for (Contract c : all) {
+                if (i > 20) break; // 20 ile sınırla — prompt boyutu kontrolü
+                sb.append(i++).append(". ")
+                  .append(c.getTitle() == null ? "(başlıksız)" : c.getTitle())
+                  .append(" | tip=").append(c.getType() == null ? "?" : c.getType())
+                  .append(" | durum=").append(c.getStatus() == null ? "?" : c.getStatus());
+                if (c.getCounterpartyName() != null && !c.getCounterpartyName().isBlank()) {
+                    sb.append(" | karşı taraf=").append(c.getCounterpartyName());
+                }
+                if (c.getAmount() != null && !c.getAmount().isBlank()) {
+                    sb.append(" | tutar=").append(c.getAmount());
+                }
+                sb.append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("buildAllContractsContext hatası: {}", e.getMessage());
             return null;
         }
     }
