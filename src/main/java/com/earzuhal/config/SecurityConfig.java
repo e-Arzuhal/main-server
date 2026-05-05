@@ -98,6 +98,13 @@ public class SecurityConfig {
                         // User endpoints
                         .requestMatchers("/api/users/me", "/api/users/me/**").authenticated()
 
+                        // TC Kimlik lookup — sözleşme oluştururken karşı tarafı
+                        // doğrulamak için her authenticated user'a açık olmalı.
+                        // ADMIN-only "/api/users/**" matcher'ından ÖNCE tanımlandı,
+                        // aksi halde mobil/web client lookup yaparken 401/403
+                        // alıp oturumdan düşüyor.
+                        .requestMatchers(HttpMethod.GET, "/api/users/lookup").authenticated()
+
                         // Disclaimer endpoints — controller okuma/kayıt için kimlik
                         // doğrulanmış kullanıcı bekliyor; permitAll altında anonim
                         // istekler "anonymousUser" adıyla işlem yapardı.
