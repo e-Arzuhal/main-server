@@ -290,54 +290,52 @@ public class ChatbotService {
         return sb.toString();
     }
 
-    /** GraphRAG'den sözleşme bağlam bilgisi alır. */
+    /**
+     * Chatbot için legal/clause bağlamını kurar. Daha önce graphRagService.analyze()
+     * çağrılıyordu — bu, graphrag-server tarafında Gemini'yi tetikliyor ve isteğin
+     * 2-4 dakika sürmesine yol açıyordu (Gemini yavaş + main-server netty timeout 120s).
+     * Sonuç: chatbot hiç yanıt veremeden mobil 30s'de timeout'a düşüyor ve
+     * "Bir hata oluştu lütfen tekrar deneyin" gösteriyordu.
+     *
+     * Çözüm: GraphRAG'i hot path'ten çıkar. Sözleşme oluşturulurken Gemini'nin
+     * ürettiği `missingClauseExplanations` JSON'u zaten Contract üzerinde kayıtlı —
+     * chatbot context'i bu cached veriden kuruyor. GraphRAG'e canlı çağrı yapılmıyor;
+     * gerekirse ayrı bir asenkron job ile zenginleştirilebilir.
+     */
     private String fetchGraphRagContext(Contract contract) {
         try {
-            String contractType = contract.getType();
-            if (contractType == null) return null;
+            String missing = contract.getMissingClauseExplanations();
+            if (missing == null || missing.isBlank()) return null;
 
-            // Türkçe tip dönüşümü (GraphRAG Türkçe tip bekler)
-            String turkishType = com.earzuhal.dto.analysis.ContractTypeMapping.toTurkish(contractType);
-            if (turkishType == null) turkishType = contractType;
-
-            GraphRagResponse graphRag = graphRagService.analyze(turkishType, java.util.Map.of());
-
-            if (graphRag == null) return null;
+            // JSON listesi: [{field, riskLevel, tbkArticle, explanation, suggestion}, ...]
+            // Tip-belirsiz parse — chatbot'un göreceği özet metni üret.
+            com.fasterxml.jackson.databind.JsonNode arr;
+            try {
+                arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(missing);
+            } catch (Exception parseErr) {
+                log.warn("missingClauseExplanations parse edilemedi: {}", parseErr.getMessage());
+                return null;
+            }
+            if (!arr.isArray() || arr.size() == 0) return null;
 
             StringBuilder sb = new StringBuilder();
-
-            // Analiz sonucu
-            if (graphRag.getAnalysis() != null) {
-                var analysis = graphRag.getAnalysis();
-                if (analysis.getMatchedFields() != null && !analysis.getMatchedFields().isEmpty()) {
-                    sb.append("Eşleşen Maddeler: ").append(String.join(", ", analysis.getMatchedFields())).append("\n");
-                }
-                if (analysis.getMissingRequired() != null && !analysis.getMissingRequired().isEmpty()) {
-                    sb.append("Eksik Zorunlu Maddeler: ").append(String.join(", ", analysis.getMissingRequired())).append("\n");
-                }
+            sb.append("Eksik / dikkat edilecek maddeler (sözleşme oluşturulurken AI tarafından tespit edildi):\n");
+            int max = Math.min(arr.size(), 8);
+            for (int i = 0; i < max; i++) {
+                var n = arr.get(i);
+                String field = n.path("field").asText("");
+                String level = n.path("riskLevel").asText("");
+                int tbk = n.path("tbkArticle").asInt(0);
+                String exp = n.path("explanation").asText("");
+                sb.append("- ").append(field);
+                if (!level.isBlank()) sb.append(" (").append(level).append(")");
+                if (tbk > 0) sb.append(" — TBK madde ").append(tbk);
+                if (!exp.isBlank()) sb.append(": ").append(exp);
+                sb.append("\n");
             }
-
-            // Hukuki analiz
-            if (graphRag.getLegalAnalysis() != null) {
-                var legal = graphRag.getLegalAnalysis();
-                if (legal.getTbkArticles() != null && !legal.getTbkArticles().isEmpty()) {
-                    sb.append("İlgili TBK Maddeleri: ").append(legal.getTbkArticles()).append("\n");
-                }
-                if (legal.getGeneralAssessment() != null) {
-                    sb.append("Genel Değerlendirme: ").append(legal.getGeneralAssessment()).append("\n");
-                }
-                if (legal.getRisks() != null) {
-                    for (var risk : legal.getRisks()) {
-                        sb.append("Risk: ").append(risk.getField())
-                                .append(" (").append(risk.getRiskLevel()).append(") — ")
-                                .append(risk.getExplanation()).append("\n");
-                    }
-                }
-            }
-
-            return sb.length() > 0 ? sb.toString() : null;
+            return sb.toString();
         } catch (Exception e) {
-            log.warn("GraphRAG bağlam alınamadı: {}", e.getMessage());
+            log.warn("Chatbot legal context kurulamadı: {}", e.getMessage());
             return null;
         }
     }
