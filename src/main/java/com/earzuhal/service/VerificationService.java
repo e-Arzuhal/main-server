@@ -113,6 +113,42 @@ public class VerificationService {
                     .build();
         }
 
+        // TC Kimlik'i şifreleyerek hazırla — plaintext asla DB'ye yazılmaz
+        String encryptedTc = encryptionService.encrypt(request.getTcNo());
+
+        // 1) Bu TC zaten BAŞKA AKTİF bir kullanıcıya bağlıysa: yeni
+        //    doğrulama reddedilir. Önceden tek tip "bi hata oluştu"
+        //    görünüyordu; artık net mesajla 400 dönülür.
+        Optional<User> existingTcOwner = userRepository.findByTcKimlik(encryptedTc);
+        if (existingTcOwner.isPresent()) {
+            User other = existingTcOwner.get();
+            boolean sameUser = other.getId().equals(user.getId());
+            boolean otherDeleted = other.getDeletedAt() != null;
+            if (!sameUser && !otherDeleted) {
+                log.warn("Verify çakışması: TC zaten aktif user id={} tarafından kullanılıyor (talep eden user id={})",
+                        other.getId(), user.getId());
+                throw new BadRequestException(
+                        "Bu TC Kimlik Numarası zaten başka bir hesaba bağlı. " +
+                        "Eğer bu TC size aitse, lütfen mevcut hesabınızla giriş yapın veya destek ekibiyle iletişime geçin.");
+            }
+            // 2) Soft-delete edilmiş eski hesap → sözleşmeleri yeni user'a
+            //    devret ve eski user'ın tcKimlik'ini SERBEST bırak ki
+            //    UNIQUE kısıtı yeni user'da set edilebilsin. Aynı transaction
+            //    içinde olduğu için saveAndFlush ile DB'ye yansıt.
+            if (!sameUser && otherDeleted) {
+                log.info("Soft-deleted user (id={}) bulundu aynı TC ile; sözleşmeler yeni user'a (id={}) aktarılıyor",
+                        other.getId(), user.getId());
+                int moved = contractRepository.transferOwnership(other.getId(), user.getId());
+                log.info("{} sözleşmenin sahibi taşındı.", moved);
+                other.setTcKimlik(null);
+                other.setUpdatedAt(OffsetDateTime.now());
+                // saveAndFlush: aynı satırda yeni user'a TC vermeden önce
+                // DB'de eski user'ın TC'si null'a düşmüş olmalı, aksi halde
+                // unique constraint ihlali alınır.
+                userRepository.saveAndFlush(other);
+            }
+        }
+
         // NFC veya MRZ — gerçek doğrulama
         verification.setVerificationMethod(method);
         verification.setStatus("VERIFIED");
@@ -122,26 +158,6 @@ public class VerificationService {
         }
 
         verificationRepository.save(verification);
-
-        // TC Kimlik'i şifreleyerek kaydet — plaintext asla DB'ye yazılmaz
-        String encryptedTc = encryptionService.encrypt(request.getTcNo());
-
-        // Aynı TC ile soft-delete edilmiş eski bir hesap var mı? Varsa o
-        // hesabın sözleşmelerini ve disclaimer kabulü gibi user-bağlı
-        // verilerini yeni hesaba aktar; sonra eski user kaydının TC'sini
-        // serbest bırak (yeni user UNIQUE kısıtını tutsun).
-        userRepository.findByTcKimlik(encryptedTc).ifPresent(oldUser -> {
-            if (oldUser.getDeletedAt() != null && !oldUser.getId().equals(user.getId())) {
-                log.info("Soft-deleted user (id={}) bulundu aynı TC ile; sözleşmeler yeni user'a (id={}) aktarılıyor",
-                        oldUser.getId(), user.getId());
-                int moved = contractRepository.transferOwnership(oldUser.getId(), user.getId());
-                log.info("{} sözleşmenin sahibi taşındı.", moved);
-                // TC unique constraint için eski kullanıcının tcKimlik'ini boşalt
-                oldUser.setTcKimlik(null);
-                oldUser.setUpdatedAt(OffsetDateTime.now());
-                userRepository.save(oldUser);
-            }
-        });
 
         user.setTcKimlik(encryptedTc);
 
