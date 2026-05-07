@@ -73,7 +73,7 @@
                 <div class="sig-line"></div>
                 <div class="sig-label">ALICI</div>
                 <div class="sig-name" th:text="${contract.counterpartyName != null ? contract.counterpartyName : '—'}">Alıcı</div>
-                <div class="sig-date">Tarih: _______________</div>
+                <div class="sig-date">Tarih: <span th:text="${counterpartyDate}">01/01/2026</span></div>
             </div>
         </div>
     </div>

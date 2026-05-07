@@ -189,17 +189,36 @@ public class ChatbotService {
         return findActiveContract(username);
     }
 
-    /** Kullanıcının chatbot'ta seçebileceği sözleşmeler — son 10 sözleşme (DRAFT/PENDING/APPROVED). */
+    /** Kullanıcının chatbot'ta seçebileceği sözleşmeler — sahip olduğu + karşı
+     *  taraf olduğu (onay bekleyen) son 10 sözleşme (DRAFT/PENDING/APPROVED).
+     *  Önceden yalnızca user-owned dönüyordu; o yüzden onay için sözleşme
+     *  gelen kullanıcı chatbot ile o sözleşmeyi konuşamıyordu. */
     private List<Contract> listSelectableContracts(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            return contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).stream()
+            // ID'ye göre tekilleştir (sahip + karşı taraf aynı sözleşmede mümkün
+            // değil ama defansif olalım), createdAt'a göre desc sırala.
+            java.util.LinkedHashMap<Long, Contract> byId = new java.util.LinkedHashMap<>();
+            contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                    .forEach(c -> byId.put(c.getId(), c));
+            if (user.getTcKimlik() != null) {
+                contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                        .forEach(c -> byId.putIfAbsent(c.getId(), c));
+            }
+            return byId.values().stream()
                     .filter(c -> {
                         String s = c.getStatus();
                         return s == null
                                 || "DRAFT".equals(s)
                                 || "PENDING".equals(s)
                                 || "APPROVED".equals(s);
+                    })
+                    .sorted((a, b) -> {
+                        var ad = a.getCreatedAt(); var bd = b.getCreatedAt();
+                        if (ad == null && bd == null) return 0;
+                        if (ad == null) return 1;
+                        if (bd == null) return -1;
+                        return bd.compareTo(ad);
                     })
                     .limit(10)
                     .toList();
@@ -209,11 +228,12 @@ public class ChatbotService {
         }
     }
 
-    /** Kullanıcının son DRAFT veya PENDING sözleşmesini bulur. */
+    /** Kullanıcının son DRAFT veya PENDING sözleşmesini bulur — sahip olduğu
+     *  veya karşı taraf olduğu sözleşmeleri kapsar. */
     private Contract findActiveContract(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            // Önce DRAFT, sonra PENDING ara
+            // Önce DRAFT (yalnızca sahip olabilir), sonra PENDING (sahip + karşı taraf)
             List<Contract> drafts = contractRepository
                     .findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "DRAFT");
             if (!drafts.isEmpty()) return drafts.get(0);
@@ -221,6 +241,14 @@ public class ChatbotService {
             List<Contract> pending = contractRepository
                     .findByUserIdAndStatusOrderByCreatedAtDesc(user.getId(), "PENDING");
             if (!pending.isEmpty()) return pending.get(0);
+
+            // Karşı taraf olarak gelen onay bekleyen sözleşmeler
+            if (user.getTcKimlik() != null) {
+                List<Contract> incoming = contractRepository
+                        .findByCounterpartyTcKimlikAndStatusOrderByCreatedAtDesc(
+                                user.getTcKimlik(), "PENDING");
+                if (!incoming.isEmpty()) return incoming.get(0);
+            }
 
             return null;
         } catch (Exception e) {
@@ -238,8 +266,15 @@ public class ChatbotService {
     private String buildAllContractsContext(String username) {
         try {
             User user = userService.getUserByUsernameOrEmail(username);
-            List<Contract> all = contractRepository
-                    .findByUserIdOrderByCreatedAtDesc(user.getId());
+            // Sahip olunan + karşı taraf olunan sözleşmeleri tekilleştir
+            java.util.LinkedHashMap<Long, Contract> byId = new java.util.LinkedHashMap<>();
+            contractRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                    .forEach(c -> byId.put(c.getId(), c));
+            if (user.getTcKimlik() != null) {
+                contractRepository.findByCounterpartyTcKimlikOrderByCreatedAtDesc(user.getTcKimlik())
+                        .forEach(c -> byId.putIfAbsent(c.getId(), c));
+            }
+            List<Contract> all = new java.util.ArrayList<>(byId.values());
             if (all.isEmpty()) return null;
             StringBuilder sb = new StringBuilder();
             sb.append("Kullanıcının kayıtlı sözleşmeleri (toplam ")
@@ -290,54 +325,52 @@ public class ChatbotService {
         return sb.toString();
     }
 
-    /** GraphRAG'den sözleşme bağlam bilgisi alır. */
+    /**
+     * Chatbot için legal/clause bağlamını kurar. Daha önce graphRagService.analyze()
+     * çağrılıyordu — bu, graphrag-server tarafında Gemini'yi tetikliyor ve isteğin
+     * 2-4 dakika sürmesine yol açıyordu (Gemini yavaş + main-server netty timeout 120s).
+     * Sonuç: chatbot hiç yanıt veremeden mobil 30s'de timeout'a düşüyor ve
+     * "Bir hata oluştu lütfen tekrar deneyin" gösteriyordu.
+     *
+     * Çözüm: GraphRAG'i hot path'ten çıkar. Sözleşme oluşturulurken Gemini'nin
+     * ürettiği `missingClauseExplanations` JSON'u zaten Contract üzerinde kayıtlı —
+     * chatbot context'i bu cached veriden kuruyor. GraphRAG'e canlı çağrı yapılmıyor;
+     * gerekirse ayrı bir asenkron job ile zenginleştirilebilir.
+     */
     private String fetchGraphRagContext(Contract contract) {
         try {
-            String contractType = contract.getType();
-            if (contractType == null) return null;
+            String missing = contract.getMissingClauseExplanations();
+            if (missing == null || missing.isBlank()) return null;
 
-            // Türkçe tip dönüşümü (GraphRAG Türkçe tip bekler)
-            String turkishType = com.earzuhal.dto.analysis.ContractTypeMapping.toTurkish(contractType);
-            if (turkishType == null) turkishType = contractType;
-
-            GraphRagResponse graphRag = graphRagService.analyze(turkishType, java.util.Map.of());
-
-            if (graphRag == null) return null;
+            // JSON listesi: [{field, riskLevel, tbkArticle, explanation, suggestion}, ...]
+            // Tip-belirsiz parse — chatbot'un göreceği özet metni üret.
+            com.fasterxml.jackson.databind.JsonNode arr;
+            try {
+                arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(missing);
+            } catch (Exception parseErr) {
+                log.warn("missingClauseExplanations parse edilemedi: {}", parseErr.getMessage());
+                return null;
+            }
+            if (!arr.isArray() || arr.size() == 0) return null;
 
             StringBuilder sb = new StringBuilder();
-
-            // Analiz sonucu
-            if (graphRag.getAnalysis() != null) {
-                var analysis = graphRag.getAnalysis();
-                if (analysis.getMatchedFields() != null && !analysis.getMatchedFields().isEmpty()) {
-                    sb.append("Eşleşen Maddeler: ").append(String.join(", ", analysis.getMatchedFields())).append("\n");
-                }
-                if (analysis.getMissingRequired() != null && !analysis.getMissingRequired().isEmpty()) {
-                    sb.append("Eksik Zorunlu Maddeler: ").append(String.join(", ", analysis.getMissingRequired())).append("\n");
-                }
+            sb.append("Eksik / dikkat edilecek maddeler (sözleşme oluşturulurken AI tarafından tespit edildi):\n");
+            int max = Math.min(arr.size(), 8);
+            for (int i = 0; i < max; i++) {
+                var n = arr.get(i);
+                String field = n.path("field").asText("");
+                String level = n.path("riskLevel").asText("");
+                int tbk = n.path("tbkArticle").asInt(0);
+                String exp = n.path("explanation").asText("");
+                sb.append("- ").append(field);
+                if (!level.isBlank()) sb.append(" (").append(level).append(")");
+                if (tbk > 0) sb.append(" — TBK madde ").append(tbk);
+                if (!exp.isBlank()) sb.append(": ").append(exp);
+                sb.append("\n");
             }
-
-            // Hukuki analiz
-            if (graphRag.getLegalAnalysis() != null) {
-                var legal = graphRag.getLegalAnalysis();
-                if (legal.getTbkArticles() != null && !legal.getTbkArticles().isEmpty()) {
-                    sb.append("İlgili TBK Maddeleri: ").append(legal.getTbkArticles()).append("\n");
-                }
-                if (legal.getGeneralAssessment() != null) {
-                    sb.append("Genel Değerlendirme: ").append(legal.getGeneralAssessment()).append("\n");
-                }
-                if (legal.getRisks() != null) {
-                    for (var risk : legal.getRisks()) {
-                        sb.append("Risk: ").append(risk.getField())
-                                .append(" (").append(risk.getRiskLevel()).append(") — ")
-                                .append(risk.getExplanation()).append("\n");
-                    }
-                }
-            }
-
-            return sb.length() > 0 ? sb.toString() : null;
+            return sb.toString();
         } catch (Exception e) {
-            log.warn("GraphRAG bağlam alınamadı: {}", e.getMessage());
+            log.warn("Chatbot legal context kurulamadı: {}", e.getMessage());
             return null;
         }
     }

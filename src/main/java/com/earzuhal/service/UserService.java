@@ -100,9 +100,10 @@ public class UserService {
                 .map(u -> {
                     java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
                     result.put("found", true);
-                    result.put("displayName", u.getFirstName() != null && u.getLastName() != null
+                    String fullName = u.getFirstName() != null && u.getLastName() != null
                             ? u.getFirstName() + " " + u.getLastName()
-                            : u.getUsername());
+                            : u.getUsername();
+                    result.put("displayName", maskName(fullName));
                     return result;
                 })
                 .orElseGet(() -> {
@@ -110,6 +111,24 @@ public class UserService {
                     result.put("found", false);
                     return result;
                 });
+    }
+
+    /**
+     * Mahremiyet için isim maskele: "Ahmet Yılmaz" -> "A**** Y*****".
+     * Karşı tarafın TC'si girildiğinde tam adı sızdırmamak için kullanılır.
+     */
+    private String maskName(String fullName) {
+        if (fullName == null || fullName.isBlank()) return "";
+        StringBuilder sb = new StringBuilder();
+        String[] parts = fullName.trim().split("\\s+");
+        for (int i = 0; i < parts.length; i++) {
+            String p = parts[i];
+            if (p.isEmpty()) continue;
+            sb.append(p.charAt(0));
+            for (int j = 1; j < p.length(); j++) sb.append('*');
+            if (i < parts.length - 1) sb.append(' ');
+        }
+        return sb.toString();
     }
 
     public NotificationPreferencesResponse getNotificationPreferences(String username) {
