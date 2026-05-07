@@ -5,6 +5,7 @@ import com.earzuhal.Model.IdentityVerification;
 import com.earzuhal.Model.User;
 import com.earzuhal.Repository.ContractRepository;
 import com.earzuhal.Repository.IdentityVerificationRepository;
+import com.earzuhal.Repository.UserRepository;
 import com.earzuhal.dto.verification.VerificationRequest;
 import com.earzuhal.dto.verification.VerificationResponse;
 import com.earzuhal.exception.BadRequestException;
@@ -27,17 +28,20 @@ public class VerificationService {
     private final NotificationService notificationService;
     private final TcKimlikEncryptionService encryptionService;
     private final UserService userService;
+    private final UserRepository userRepository;
 
     public VerificationService(IdentityVerificationRepository verificationRepository,
                                ContractRepository contractRepository,
                                NotificationService notificationService,
                                TcKimlikEncryptionService encryptionService,
-                               UserService userService) {
+                               UserService userService,
+                               UserRepository userRepository) {
         this.verificationRepository = verificationRepository;
         this.contractRepository = contractRepository;
         this.notificationService = notificationService;
         this.encryptionService = encryptionService;
         this.userService = userService;
+        this.userRepository = userRepository;
     }
 
     @Transactional
