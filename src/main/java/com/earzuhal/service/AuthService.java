@@ -74,10 +74,12 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest registerRequest) {
-        if (userRepository.existsByUsername(registerRequest.getUsername())) {
+        // Soft-deleted kullanıcılar uniqueness kontrolünden hariç — silinmiş
+        // bir hesabın username/email'i tekrar kullanılabilir olmalı.
+        if (Boolean.TRUE.equals(userRepository.existsActiveByUsername(registerRequest.getUsername()))) {
             throw new UserAlreadyExistsException("Bu kullanıcı adı zaten kullanılıyor.");
         }
-        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+        if (Boolean.TRUE.equals(userRepository.existsActiveByEmail(registerRequest.getEmail()))) {
             throw new UserAlreadyExistsException("Bu e-posta adresi zaten kullanılıyor.");
         }
 

@@ -46,17 +46,19 @@ public class UserService {
     }
 
     public User getUserByUsername(String username) {
-        return userRepository.findByUsername(username)
+        return userRepository.findActiveByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
     }
 
     public User getUserByEmail(String email) {
-        return userRepository.findByEmail(email)
+        return userRepository.findActiveByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
     }
 
     public User getUserByUsernameOrEmail(String usernameOrEmail) {
-        return userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
+        // Soft-deleted kullanıcılar bulunmaz; bu sayede hesabı silinmiş
+        // kişi giriş yapamaz, ayar değiştiremez vb.
+        return userRepository.findActiveByUsernameOrEmail(usernameOrEmail)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username or email: " + usernameOrEmail));
     }
 
@@ -74,7 +76,7 @@ public class UserService {
         }
 
         if (updateRequest.getEmail() != null && !updateRequest.getEmail().equals(user.getEmail())) {
-            if (userRepository.existsByEmail(updateRequest.getEmail())) {
+            if (Boolean.TRUE.equals(userRepository.existsActiveByEmail(updateRequest.getEmail()))) {
                 throw new UserAlreadyExistsException("Email already in use");
             }
             user.setEmail(updateRequest.getEmail());
@@ -94,9 +96,10 @@ public class UserService {
     }
 
     public java.util.Map<String, Object> lookupByTcKimlik(String tcKimlik) {
-        // Frontend plaintext TC gönderir; DB'de şifreli aranmalı
+        // Frontend plaintext TC gönderir; DB'de şifreli aranmalı.
+        // Yalnızca aktif (silinmemiş) kullanıcılar lookup'ta gösterilsin.
         String encryptedTc = encryptionService.encrypt(tcKimlik);
-        return userRepository.findByTcKimlik(encryptedTc)
+        return userRepository.findActiveByTcKimlik(encryptedTc)
                 .map(u -> {
                     java.util.Map<String, Object> result = new java.util.LinkedHashMap<>();
                     result.put("found", true);
@@ -179,15 +182,36 @@ public class UserService {
     @Transactional
     public void deleteCurrentUser(String username) {
         User user = getUserByUsernameOrEmail(username);
-        userRepository.delete(user);
+        // Soft delete: row'u silmiyoruz çünkü contracts.user_id FK'si var
+        // (disclaimer_acceptances, identity_verifications vs. dahil). Bunun
+        // yerine deletedAt'i set edip giriş yapmasını engelliyoruz; aynı TC
+        // ile yeniden kayıtta AuthService bu satırı "revive" eder.
+        user.setDeletedAt(OffsetDateTime.now());
+        // username ve email'i kullanılmaz hale getir → başkası aynı email'le
+        // kayıt olabilsin. tcKimlik'i KORU ki kullanıcı aynı TC ile yeniden
+        // kayıt olduğunda eski hesabını revive edebilelim.
+        long id = user.getId();
+        user.setUsername("_deleted_" + id + "_" + user.getUsername());
+        // 100 char DB limiti — uzun email'leri budayarak prefix ekle
+        String prefixedEmail = "_deleted_" + id + "_" + user.getEmail();
+        if (prefixedEmail.length() > 100) prefixedEmail = prefixedEmail.substring(0, 100);
+        user.setEmail(prefixedEmail);
+        // 2FA aktifse pasifleştir; aktif token'lar zaten geçersiz sayılır
+        user.setTwoFactorEnabled(false);
+        user.setIsActive(false);
+        user.setUpdatedAt(OffsetDateTime.now());
+        userRepository.save(user);
     }
 
     public boolean isUsernameExists(String username) {
-        return userRepository.existsByUsername(username);
+        // Soft-deleted kullanıcılar uniqueness için sayılmaz; aksi halde
+        // hesabı silinmiş bir kullanıcının username'i sonsuza dek "alınmış"
+        // kalırdı.
+        return Boolean.TRUE.equals(userRepository.existsActiveByUsername(username));
     }
 
     public boolean isEmailExists(String email) {
-        return userRepository.existsByEmail(email);
+        return Boolean.TRUE.equals(userRepository.existsActiveByEmail(email));
     }
 
     public UserResponse convertToResponse(User user) {

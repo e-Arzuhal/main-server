@@ -25,7 +25,9 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     @Transactional
     public UserDetails loadUserByUsername(String usernameOrEmail) throws UsernameNotFoundException {
-        User user = userRepository.findByUsernameOrEmail(usernameOrEmail, usernameOrEmail)
+        // Soft-deleted hesaplar buradan dönmemeli — login + JWT
+        // doğrulamasında hesabı silinmiş kullanıcıya erişim verilmesin.
+        User user = userRepository.findActiveByUsernameOrEmail(usernameOrEmail)
                 .orElseThrow(() ->
                         new UsernameNotFoundException("User not found with username or email: " + usernameOrEmail)
                 );

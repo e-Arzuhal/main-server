@@ -121,6 +121,24 @@ public class VerificationService {
 
         // TC Kimlik'i şifreleyerek kaydet — plaintext asla DB'ye yazılmaz
         String encryptedTc = encryptionService.encrypt(request.getTcNo());
+
+        // Aynı TC ile soft-delete edilmiş eski bir hesap var mı? Varsa o
+        // hesabın sözleşmelerini ve disclaimer kabulü gibi user-bağlı
+        // verilerini yeni hesaba aktar; sonra eski user kaydının TC'sini
+        // serbest bırak (yeni user UNIQUE kısıtını tutsun).
+        userRepository.findByTcKimlik(encryptedTc).ifPresent(oldUser -> {
+            if (oldUser.getDeletedAt() != null && !oldUser.getId().equals(user.getId())) {
+                log.info("Soft-deleted user (id={}) bulundu aynı TC ile; sözleşmeler yeni user'a (id={}) aktarılıyor",
+                        oldUser.getId(), user.getId());
+                int moved = contractRepository.transferOwnership(oldUser.getId(), user.getId());
+                log.info("{} sözleşmenin sahibi taşındı.", moved);
+                // TC unique constraint için eski kullanıcının tcKimlik'ini boşalt
+                oldUser.setTcKimlik(null);
+                oldUser.setUpdatedAt(OffsetDateTime.now());
+                userRepository.save(oldUser);
+            }
+        });
+
         user.setTcKimlik(encryptedTc);
 
         log.info("Identity verified for user={} method={}", username, verification.getVerificationMethod());

@@ -76,4 +76,11 @@ public class User {
     @Column(name = "updated_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
     private OffsetDateTime updatedAt = OffsetDateTime.now();
 
+    // Soft-delete: kullanıcı hesabını sildiğinde row kaldırılmaz; yalnızca
+    // deleted_at set edilir. Bu sayede contracts.user_id FK'si bozulmaz ve
+    // eski sözleşmeler kalıcı kalır. Kullanıcı aynı TC ile tekrar kayıt
+    // olduğunda bu satır "revive" edilir (bkz. AuthService.register).
+    @Column(name = "deleted_at", columnDefinition = "TIMESTAMP WITH TIME ZONE")
+    private OffsetDateTime deletedAt;
+
 }
