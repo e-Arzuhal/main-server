@@ -36,12 +36,20 @@ public final class ContractTypeMapping {
     );
 
     public static String toTurkish(String englishType) {
-        if (englishType == null) return "diger";
+        if (englishType == null || englishType.isBlank()) return "diger";
+        // Eğer zaten Türkçe snake_case (örn. "is_sozlesmesi") geldiyse olduğu
+        // gibi geri döndür — NLP-server bu formatı doğrudan üretiyor ve
+        // Contract.type alanında da Türkçe değer kayıtlı olabiliyor. Önceden
+        // bu durumda "diger" dönüyordu ve graphrag-server geçersiz tip 400
+        // hatası fırlatıyordu.
+        if (TO_ENGLISH.containsKey(englishType)) return englishType;
         return TO_TURKISH.getOrDefault(englishType, "diger");
     }
 
     public static String toEnglish(String turkishType) {
-        if (turkishType == null) return "OTHER";
+        if (turkishType == null || turkishType.isBlank()) return "OTHER";
+        // Aynı şekilde, English enum verilirse olduğu gibi dön.
+        if (TO_TURKISH.containsKey(turkishType)) return turkishType;
         return TO_ENGLISH.getOrDefault(turkishType, "OTHER");
     }
 }
